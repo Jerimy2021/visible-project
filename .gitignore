@@ -1,0 +1,30 @@
+# AWS / SAM
+.aws-sam/
+samconfig.toml
+
+# Secretos / entorno
+.env
+.env.*
+*.pem
+
+# Nix / direnv
+.direnv/
+result
+result-*
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.uv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Node
+node_modules/
+dist/
+
+# Varios
+.DS_Store
+*.log
