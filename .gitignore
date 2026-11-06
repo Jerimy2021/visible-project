@@ -1,6 +1,5 @@
 # AWS / SAM
 .aws-sam/
-samconfig.toml
 
 # Secretos / entorno
 .env

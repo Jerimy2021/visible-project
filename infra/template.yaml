@@ -1,0 +1,50 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Visible - webhook de WhatsApp (Twilio sandbox) con eco y validacion de firma
+
+Resources:
+  WebhookLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-webhook"
+      RetentionInDays: 14
+
+  WebhookFunction:
+    Type: AWS::Serverless::Function
+    DependsOn: WebhookLogGroup
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-webhook"
+      CodeUri: ../src
+      Handler: visible.adapters.inbound.twilio_webhook.handler
+      Runtime: python3.12
+      Architectures:
+        - arm64
+      Timeout: 10
+      MemorySize: 256
+      Environment:
+        Variables:
+          TWILIO_TOKEN_PARAM: /visible/twilio/auth_token
+      Policies:
+        - Statement:
+            - Sid: LeerTokenTwilio
+              Effect: Allow
+              Action: ssm:GetParameter
+              Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/visible/twilio/auth_token"
+            - Sid: DescifrarViaSsm
+              Effect: Allow
+              Action: kms:Decrypt
+              Resource: "*"
+              Condition:
+                StringEquals:
+                  kms:ViaService: !Sub "ssm.${AWS::Region}.amazonaws.com"
+      Events:
+        Webhook:
+          Type: HttpApi
+          Properties:
+            Path: /webhook
+            Method: POST
+
+Outputs:
+  WebhookUrl:
+    Description: URL del webhook para configurar en el sandbox de Twilio
+    Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/webhook"

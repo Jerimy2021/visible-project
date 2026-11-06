@@ -18,12 +18,19 @@ whoami:
 
 # Construye artefactos SAM
 build:
-    sam build --template infra/template.yaml
+    sam build -t infra/template.yaml
 
-# Despliega (usa configuración guardada de samconfig)
+# Despliega (parámetros en samconfig.toml).
+# SAM trae su propio botocore sin CRT y no resuelve el proveedor `login`;
+# exportamos las credenciales ya resueltas por awscli y desactivamos AWS_PROFILE.
 deploy: build
-    sam deploy --stack-name {{stack}} --region {{region}} --profile {{profile}} \
-        --resolve-s3 --capabilities CAPABILITY_IAM --no-confirm-changeset
+    eval "$(aws configure export-credentials --profile {{profile}} --format env)" && \
+        env -u AWS_PROFILE sam deploy
+
+# Imprime el output WebhookUrl del stack desplegado
+url:
+    aws cloudformation describe-stacks --stack-name {{stack}} --region {{region}} --profile {{profile}} \
+        --query "Stacks[0].Outputs[?OutputKey=='WebhookUrl'].OutputValue" --output text
 
 # Tail de logs de una función: just logs fn=procesar
 logs fn:

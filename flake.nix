@@ -26,7 +26,7 @@
             git
             gitleaks
             pre-commit
-            cfn-lint
+			python3Packages.cfn-lint
           ];
 
           shellHook = ''

@@ -1,0 +1,13 @@
+version = 0.1
+
+[default.build.parameters]
+template_file = "infra/template.yaml"
+
+[default.deploy.parameters]
+stack_name = "visible"
+region = "us-east-1"
+# Sin `profile`: SAM trae un botocore sin CRT y no resuelve el proveedor `login`.
+# `just deploy` exporta las credenciales del perfil visible al entorno (ver justfile).
+resolve_s3 = true
+capabilities = "CAPABILITY_IAM"
+confirm_changeset = false
