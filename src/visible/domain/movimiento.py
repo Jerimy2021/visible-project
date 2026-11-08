@@ -21,6 +21,7 @@ class Movimiento:
     concepto: str
     tipo: TipoMovimiento
     confianza: float
+    origen: str = ""  # p. ej. "yape" (verificado), "efectivo"; "" = desconocido
 
     @property
     def es_venta(self) -> bool:

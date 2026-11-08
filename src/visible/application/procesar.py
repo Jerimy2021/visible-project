@@ -39,12 +39,13 @@ def procesar(
     extractor: Extractor,
     repositorio: RepositorioMovimientos,
     mensajero: Mensajero,
+    evidencia_key: str = "",
 ) -> list[Movimiento]:
     """Extrae, persiste y confirma. Devuelve los movimientos extraídos."""
     movimientos = extractor.extraer(contenido)
     if not movimientos:
         mensajero.enviar_texto(telefono, MENSAJE_SIN_DATOS)
         return []
-    repositorio.guardar(telefono, movimientos)
+    repositorio.guardar(telefono, movimientos, evidencia_key)
     mensajero.enviar_texto(telefono, resumir(movimientos))
     return movimientos

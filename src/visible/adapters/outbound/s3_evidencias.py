@@ -27,7 +27,5 @@ class S3Evidencias:
         import boto3
 
         key = f"evidencias/{telefono}/{date.today().isoformat()}/{media_id}.{_extension(mime)}"
-        boto3.client("s3").put_object(
-            Bucket=self.bucket, Key=key, Body=datos, ContentType=mime
-        )
+        boto3.client("s3").put_object(Bucket=self.bucket, Key=key, Body=datos, ContentType=mime)
         return key

@@ -7,6 +7,7 @@ import os
 
 from visible.adapters.outbound.dynamo_idempotencia import DynamoIdempotencia
 from visible.adapters.outbound.dynamo_movimientos import DynamoRepositorioMovimientos
+from visible.adapters.outbound.dynamo_perfiles import DynamoPerfiles
 from visible.adapters.outbound.extractor_fake import FakeExtractor
 from visible.adapters.outbound.media import MetaMediaDownloader
 from visible.adapters.outbound.s3_evidencias import S3Evidencias
@@ -24,14 +25,15 @@ def _crear_extractor() -> Extractor:
     return FakeExtractor()
 
 
-def _construir_contenido(mensaje: MensajeEntrante) -> Contenido:
+def _construir_contenido(mensaje: MensajeEntrante) -> tuple[Contenido, str]:
+    """Devuelve (contenido, evidencia_key). La key es "" para mensajes de solo texto."""
     if mensaje.medios:
         media_id, mime = mensaje.medios[0]
         datos, mime_real = MetaMediaDownloader().descargar(media_id)
         mime_final = mime_real or mime
-        S3Evidencias().guardar(mensaje.telefono, media_id, datos, mime_final)
-        return Contenido(imagen=datos, mime_type=mime_final)
-    return Contenido(texto=mensaje.texto)
+        key = S3Evidencias().guardar(mensaje.telefono, media_id, datos, mime_final)
+        return Contenido(imagen=datos, mime_type=mime_final), key
+    return Contenido(texto=mensaje.texto), ""
 
 
 def handler(event: dict, context: object) -> dict:
@@ -43,13 +45,16 @@ def handler(event: dict, context: object) -> dict:
         return {"estado": "duplicado", "mensaje_id": mensaje.mensaje_id}
 
     try:
-        contenido = _construir_contenido(mensaje)
+        # El perfil se crea al primer mensaje (registra el consentimiento).
+        DynamoPerfiles().crear_si_no_existe(mensaje.telefono)
+        contenido, evidencia_key = _construir_contenido(mensaje)
         movimientos = procesar(
             mensaje.telefono,
             contenido,
             _crear_extractor(),
             DynamoRepositorioMovimientos(),
             WhatsAppSender(),
+            evidencia_key,
         )
     except Exception:
         # Libera la reserva para que el reintento async pueda reprocesar.

@@ -6,4 +6,6 @@ from visible.domain.movimiento import Movimiento
 
 
 class RepositorioMovimientos(Protocol):
-    def guardar(self, telefono: str, movimientos: list[Movimiento]) -> None: ...
+    def guardar(
+        self, telefono: str, movimientos: list[Movimiento], evidencia_key: str = ""
+    ) -> None: ...

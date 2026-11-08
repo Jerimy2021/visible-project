@@ -13,7 +13,7 @@ class RepoMemoria:
     def __init__(self):
         self.guardados: list[tuple[str, list[Movimiento]]] = []
 
-    def guardar(self, telefono, movimientos):
+    def guardar(self, telefono, movimientos, evidencia_key=""):
         self.guardados.append((telefono, movimientos))
 
 

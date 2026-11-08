@@ -41,6 +41,11 @@ url:
 logs fn:
     sam logs --stack-name {{stack}} --name {{fn}} --region {{region}} --profile {{profile}} --tail
 
+# Carga datos demo (3 emprendedoras) en DynamoDB
+seed:
+    eval "$(aws configure export-credentials --profile {{profile}} --format env)" && \
+        env -u AWS_PROFILE uv run --with boto3 python scripts/seed.py
+
 # Tests
 test:
     uv run pytest -q

@@ -67,6 +67,20 @@ Resources:
         AttributeName: ttl
         Enabled: true
 
+  PerfilesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${AWS::StackName}-perfiles"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: telefono
+          AttributeType: S
+      KeySchema:
+        - AttributeName: telefono
+          KeyType: HASH
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
   # --- Procesamiento (async) ----------------------------------------------
   ProcesarLogGroup:
     Type: AWS::Logs::LogGroup
@@ -93,6 +107,7 @@ Resources:
           BUCKET_EVIDENCIAS: !Ref EvidenciasBucket
           TABLA_MOVIMIENTOS: !Ref MovimientosTable
           TABLA_IDEMPOTENCIA: !Ref IdempotenciaTable
+          TABLA_PERFILES: !Ref PerfilesTable
       Policies:
         - Statement:
             - Sid: LeerParamsMeta
@@ -122,6 +137,10 @@ Resources:
                 - dynamodb:PutItem
                 - dynamodb:DeleteItem
               Resource: !GetAtt IdempotenciaTable.Arn
+            - Sid: CrearPerfil
+              Effect: Allow
+              Action: dynamodb:PutItem
+              Resource: !GetAtt PerfilesTable.Arn
             - Sid: InvocarBedrock
               Effect: Allow
               Action: bedrock:InvokeModel
@@ -130,6 +149,55 @@ Resources:
                 - !Sub "arn:aws:bedrock:us-east-1:${AWS::AccountId}:inference-profile/us.anthropic.claude-haiku-4-5-20251001-v1:0"
                 - "arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-4-6*"
                 - "arn:aws:bedrock:*::foundation-model/anthropic.claude-haiku-4-5*"
+
+  # --- API del panel (solo lectura) ---------------------------------------
+  ApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-api"
+      RetentionInDays: 14
+
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    DependsOn: ApiLogGroup
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-api"
+      Handler: visible.adapters.inbound.api.handler
+      Timeout: 15
+      MemorySize: 256
+      Environment:
+        Variables:
+          TABLA_MOVIMIENTOS: !Ref MovimientosTable
+          TABLA_PERFILES: !Ref PerfilesTable
+          BUCKET_EVIDENCIAS: !Ref EvidenciasBucket
+          CORS_ORIGIN: "*"
+      Policies:
+        - Statement:
+            - Sid: LeerPerfiles
+              Effect: Allow
+              Action:
+                - dynamodb:Scan
+                - dynamodb:GetItem
+              Resource: !GetAtt PerfilesTable.Arn
+            - Sid: LeerMovimientos
+              Effect: Allow
+              Action: dynamodb:Query
+              Resource: !GetAtt MovimientosTable.Arn
+            - Sid: LeerEvidencias
+              Effect: Allow
+              Action: s3:GetObject
+              Resource: !Sub "${EvidenciasBucket.Arn}/*"
+      Events:
+        Lista:
+          Type: HttpApi
+          Properties:
+            Path: /perfiles
+            Method: GET
+        Ficha:
+          Type: HttpApi
+          Properties:
+            Path: /perfiles/{telefono}
+            Method: GET
 
   # --- Webhook (inbound) ---------------------------------------------------
   WebhookLogGroup:
@@ -184,3 +252,6 @@ Outputs:
   WebhookUrl:
     Description: URL del webhook para configurar en Meta (callback URL)
     Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/webhook"
+  PerfilesUrl:
+    Description: Endpoint de la API del panel (lista de perfiles)
+    Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/perfiles"
