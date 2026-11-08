@@ -1,33 +1,97 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
-Description: Visible - webhook de WhatsApp (Meta Cloud API) con eco y validacion de firma
+Description: Visible - WhatsApp (Meta) -> movimientos -> DynamoDB -> respuesta
+
+Parameters:
+  Extractor:
+    Type: String
+    Default: fake
+    AllowedValues: [fake, bedrock]
+    Description: Motor de extracción (fake mientras Bedrock está bloqueado)
+
+Globals:
+  Function:
+    Runtime: python3.12
+    Architectures:
+      - arm64
+    CodeUri: ../src
 
 Resources:
-  WebhookLogGroup:
+  # --- Almacenamiento ------------------------------------------------------
+  EvidenciasBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${AWS::StackName}-evidencias-${AWS::AccountId}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+
+  MovimientosTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${AWS::StackName}-movimientos"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: telefono
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: telefono
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
+  IdempotenciaTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${AWS::StackName}-idempotencia"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+  # --- Procesamiento (async) ----------------------------------------------
+  ProcesarLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-webhook"
+      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-procesar"
       RetentionInDays: 14
 
-  WebhookFunction:
+  ProcesarFunction:
     Type: AWS::Serverless::Function
-    DependsOn: WebhookLogGroup
+    DependsOn: ProcesarLogGroup
     Properties:
-      FunctionName: !Sub "${AWS::StackName}-webhook"
-      CodeUri: ../src
-      Handler: visible.adapters.inbound.meta_webhook.handler
-      Runtime: python3.12
-      Architectures:
-        - arm64
-      Timeout: 10
-      MemorySize: 256
+      FunctionName: !Sub "${AWS::StackName}-procesar"
+      Handler: visible.adapters.inbound.procesar.handler
+      Timeout: 60
+      MemorySize: 512
       Environment:
         Variables:
+          EXTRACTOR: !Ref Extractor
           GRAPH_API_VERSION: v25.0
+          BEDROCK_MODEL_ID: us.anthropic.claude-sonnet-5-5
           META_ACCESS_TOKEN_PARAM: /visible/meta/access_token
-          META_APP_SECRET_PARAM: /visible/meta/app_secret
-          META_VERIFY_TOKEN_PARAM: /visible/meta/verify_token
           META_PHONE_NUMBER_ID_PARAM: /visible/meta/phone_number_id
+          BUCKET_EVIDENCIAS: !Ref EvidenciasBucket
+          TABLA_MOVIMIENTOS: !Ref MovimientosTable
+          TABLA_IDEMPOTENCIA: !Ref IdempotenciaTable
       Policies:
         - Statement:
             - Sid: LeerParamsMeta
@@ -41,6 +105,64 @@ Resources:
               Condition:
                 StringEquals:
                   kms:ViaService: !Sub "ssm.${AWS::Region}.amazonaws.com"
+            - Sid: GuardarEvidencias
+              Effect: Allow
+              Action: s3:PutObject
+              Resource: !Sub "${EvidenciasBucket.Arn}/*"
+            - Sid: EscribirMovimientos
+              Effect: Allow
+              Action:
+                - dynamodb:PutItem
+                - dynamodb:BatchWriteItem
+              Resource: !GetAtt MovimientosTable.Arn
+            - Sid: ReservarIdempotencia
+              Effect: Allow
+              Action: dynamodb:PutItem
+              Resource: !GetAtt IdempotenciaTable.Arn
+            - Sid: InvocarBedrock
+              Effect: Allow
+              Action: bedrock:InvokeModel
+              Resource:
+                - !Sub "arn:aws:bedrock:*:${AWS::AccountId}:inference-profile/us.anthropic.*"
+                - "arn:aws:bedrock:*::foundation-model/anthropic.*"
+
+  # --- Webhook (inbound) ---------------------------------------------------
+  WebhookLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-webhook"
+      RetentionInDays: 14
+
+  WebhookFunction:
+    Type: AWS::Serverless::Function
+    DependsOn: WebhookLogGroup
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-webhook"
+      Handler: visible.adapters.inbound.meta_webhook.handler
+      Timeout: 10
+      MemorySize: 256
+      Environment:
+        Variables:
+          META_APP_SECRET_PARAM: /visible/meta/app_secret
+          META_VERIFY_TOKEN_PARAM: /visible/meta/verify_token
+          PROCESAR_FUNCTION_NAME: !Ref ProcesarFunction
+      Policies:
+        - Statement:
+            - Sid: LeerParamsMeta
+              Effect: Allow
+              Action: ssm:GetParameter
+              Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/visible/meta/*"
+            - Sid: DescifrarViaSsm
+              Effect: Allow
+              Action: kms:Decrypt
+              Resource: "*"
+              Condition:
+                StringEquals:
+                  kms:ViaService: !Sub "ssm.${AWS::Region}.amazonaws.com"
+            - Sid: InvocarProcesar
+              Effect: Allow
+              Action: lambda:InvokeFunction
+              Resource: !GetAtt ProcesarFunction.Arn
       Events:
         WebhookPost:
           Type: HttpApi

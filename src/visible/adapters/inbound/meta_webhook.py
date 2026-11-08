@@ -11,10 +11,8 @@ import json
 import os
 
 from visible.adapters.outbound import secrets
-from visible.adapters.outbound.whatsapp_sender import WhatsAppSender
-from visible.application.eco import construir_eco
-from visible.application.mensajero import Mensajero
-from visible.domain.mensaje import MensajeEntrante
+from visible.adapters.outbound.invocador import invocar_procesar
+from visible.domain.mensaje import MensajeEntrante, a_dict
 
 # --- Firma (X-Hub-Signature-256) ------------------------------------------
 
@@ -65,14 +63,23 @@ def parsear_mensajes(payload: dict) -> list[MensajeEntrante]:
 def _a_mensaje(msg: dict) -> MensajeEntrante:
     telefono = msg.get("from", "")
     tipo = msg.get("type", "")
+    mensaje_id = msg.get("id", "")
     if tipo == "text":
-        return MensajeEntrante(telefono=telefono, texto=msg.get("text", {}).get("body", ""))
+        return MensajeEntrante(
+            telefono=telefono,
+            texto=msg.get("text", {}).get("body", ""),
+            mensaje_id=mensaje_id,
+        )
     if tipo in _TIPOS_MEDIA:
         media = msg.get(tipo, {})
-        texto = media.get("caption", "")
         medios = ((media.get("id", ""), media.get("mime_type", "")),)
-        return MensajeEntrante(telefono=telefono, texto=texto, medios=medios)
-    return MensajeEntrante(telefono=telefono, texto="")
+        return MensajeEntrante(
+            telefono=telefono,
+            texto=media.get("caption", ""),
+            medios=medios,
+            mensaje_id=mensaje_id,
+        )
+    return MensajeEntrante(telefono=telefono, texto="", mensaje_id=mensaje_id)
 
 
 # --- Handler ---------------------------------------------------------------
@@ -83,11 +90,6 @@ def _raw_body(event: dict) -> bytes:
     if event.get("isBase64Encoded"):
         return base64.b64decode(body)
     return body.encode("utf-8")
-
-
-def _responder(mensajes: list[MensajeEntrante], mensajero: Mensajero) -> None:
-    for mensaje in mensajes:
-        mensajero.enviar_texto(mensaje.telefono, construir_eco(mensaje))
 
 
 def handler(event: dict, context: object) -> dict:
@@ -110,6 +112,7 @@ def handler(event: dict, context: object) -> dict:
         return {"statusCode": 403, "headers": {"Content-Type": "text/plain"}, "body": "Forbidden"}
 
     payload = json.loads(raw or b"{}")
-    _responder(parsear_mensajes(payload), WhatsAppSender())
-    # Meta reintenta si no recibe 200 rápido.
+    # Responde 200 rápido e invoca el procesamiento async (Bedrock/descarga tardan).
+    for mensaje in parsear_mensajes(payload):
+        invocar_procesar(a_dict(mensaje))
     return {"statusCode": 200, "headers": {"Content-Type": "text/plain"}, "body": "OK"}
