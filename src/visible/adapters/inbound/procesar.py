@@ -38,15 +38,21 @@ def handler(event: dict, context: object) -> dict:
     mensaje = desde_dict(event)
 
     # Idempotencia: Meta reintenta; procesamos cada mensaje una sola vez.
-    if not DynamoIdempotencia().reservar(mensaje.mensaje_id):
+    idempotencia = DynamoIdempotencia()
+    if not idempotencia.reservar(mensaje.mensaje_id):
         return {"estado": "duplicado", "mensaje_id": mensaje.mensaje_id}
 
-    contenido = _construir_contenido(mensaje)
-    movimientos = procesar(
-        mensaje.telefono,
-        contenido,
-        _crear_extractor(),
-        DynamoRepositorioMovimientos(),
-        WhatsAppSender(),
-    )
+    try:
+        contenido = _construir_contenido(mensaje)
+        movimientos = procesar(
+            mensaje.telefono,
+            contenido,
+            _crear_extractor(),
+            DynamoRepositorioMovimientos(),
+            WhatsAppSender(),
+        )
+    except Exception:
+        # Libera la reserva para que el reintento async pueda reprocesar.
+        idempotencia.liberar(mensaje.mensaje_id)
+        raise
     return {"estado": "ok", "movimientos": len(movimientos)}

@@ -25,3 +25,11 @@ class DynamoIdempotencia:
             if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
                 return False
             raise
+
+    def liberar(self, mensaje_id: str) -> None:
+        """Borra la reserva para que un reintento async pueda reprocesar."""
+        import boto3
+
+        boto3.resource("dynamodb").Table(self.tabla_nombre).delete_item(
+            Key={"pk": f"msg#{mensaje_id}"}
+        )

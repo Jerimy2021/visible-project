@@ -11,7 +11,8 @@ from pathlib import Path
 from visible.application.extractor import Contenido
 from visible.domain.movimiento import Movimiento, TipoMovimiento
 
-MODELO_DEFECTO = "us.anthropic.claude-sonnet-5-5"
+MODELO_DEFECTO = "us.anthropic.claude-sonnet-4-6"
+MODELO_RESPALDO = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 HERRAMIENTA = "registrar_movimientos"
 
 # Esquema JSON que fuerza la forma de la salida del modelo.
@@ -79,24 +80,28 @@ def _a_movimiento(item: dict) -> Movimiento:
 
 
 class BedrockExtractor:
-    """Invoca Converse con bloque de imagen y herramienta de salida."""
+    """Invoca Converse con bloque de imagen y herramienta de salida.
 
-    def __init__(self, modelo: str | None = None) -> None:
-        self.modelo = modelo or os.environ.get("BEDROCK_MODEL_ID", MODELO_DEFECTO)
+    Usa `modelo` y, si falla, reintenta una vez con `respaldo`.
+    """
 
-    def extraer(self, contenido: Contenido) -> list[Movimiento]:
-        import boto3
+    def __init__(self, modelo: str | None = None, respaldo: str | None = None) -> None:
+        self.modelo = modelo or os.environ.get("MODEL_ID", MODELO_DEFECTO)
+        self.respaldo = respaldo or os.environ.get("MODEL_ID_FALLBACK", MODELO_RESPALDO)
 
+    def _bloques(self, contenido: Contenido) -> list[dict]:
         bloques: list[dict] = []
         if contenido.imagen is not None:
             fmt = _MIME_EXT.get(contenido.mime_type, "jpeg")
             bloques.append({"image": {"format": fmt, "source": {"bytes": contenido.imagen}}})
-        texto = contenido.texto or "Extrae los movimientos de esta foto del cuaderno."
-        bloques.append({"text": texto})
+        bloques.append(
+            {"text": contenido.texto or "Extrae los movimientos de esta foto del cuaderno."}
+        )
+        return bloques
 
-        cliente = boto3.client("bedrock-runtime")
-        respuesta = cliente.converse(
-            modelId=self.modelo,
+    def _converse(self, cliente, modelo: str, bloques: list[dict]) -> dict:
+        return cliente.converse(
+            modelId=modelo,
             system=[{"text": _cargar_prompt()}],
             messages=[{"role": "user", "content": bloques}],
             toolConfig={
@@ -112,4 +117,17 @@ class BedrockExtractor:
                 "toolChoice": {"tool": {"name": HERRAMIENTA}},
             },
         )
-        return parsear_respuesta(respuesta)
+
+    def extraer(self, contenido: Contenido) -> list[Movimiento]:
+        import boto3
+
+        cliente = boto3.client("bedrock-runtime")
+        bloques = self._bloques(contenido)
+        modelos = [self.modelo] + ([self.respaldo] if self.respaldo != self.modelo else [])
+        for i, modelo in enumerate(modelos):
+            try:
+                return parsear_respuesta(self._converse(cliente, modelo, bloques))
+            except Exception:
+                if i == len(modelos) - 1:
+                    raise
+        return []

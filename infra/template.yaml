@@ -5,9 +5,9 @@ Description: Visible - WhatsApp (Meta) -> movimientos -> DynamoDB -> respuesta
 Parameters:
   Extractor:
     Type: String
-    Default: fake
+    Default: bedrock
     AllowedValues: [fake, bedrock]
-    Description: Motor de extracción (fake mientras Bedrock está bloqueado)
+    Description: Motor de extracción (fake solo para pruebas)
 
 Globals:
   Function:
@@ -86,7 +86,8 @@ Resources:
         Variables:
           EXTRACTOR: !Ref Extractor
           GRAPH_API_VERSION: v25.0
-          BEDROCK_MODEL_ID: us.anthropic.claude-sonnet-5-5
+          MODEL_ID: us.anthropic.claude-sonnet-4-6
+          MODEL_ID_FALLBACK: us.anthropic.claude-haiku-4-5-20251001-v1:0
           META_ACCESS_TOKEN_PARAM: /visible/meta/access_token
           META_PHONE_NUMBER_ID_PARAM: /visible/meta/phone_number_id
           BUCKET_EVIDENCIAS: !Ref EvidenciasBucket
@@ -117,14 +118,18 @@ Resources:
               Resource: !GetAtt MovimientosTable.Arn
             - Sid: ReservarIdempotencia
               Effect: Allow
-              Action: dynamodb:PutItem
+              Action:
+                - dynamodb:PutItem
+                - dynamodb:DeleteItem
               Resource: !GetAtt IdempotenciaTable.Arn
             - Sid: InvocarBedrock
               Effect: Allow
               Action: bedrock:InvokeModel
               Resource:
-                - !Sub "arn:aws:bedrock:*:${AWS::AccountId}:inference-profile/us.anthropic.*"
-                - "arn:aws:bedrock:*::foundation-model/anthropic.*"
+                - !Sub "arn:aws:bedrock:us-east-1:${AWS::AccountId}:inference-profile/us.anthropic.claude-sonnet-4-6"
+                - !Sub "arn:aws:bedrock:us-east-1:${AWS::AccountId}:inference-profile/us.anthropic.claude-haiku-4-5-20251001-v1:0"
+                - "arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-4-6*"
+                - "arn:aws:bedrock:*::foundation-model/anthropic.claude-haiku-4-5*"
 
   # --- Webhook (inbound) ---------------------------------------------------
   WebhookLogGroup:
