@@ -37,9 +37,10 @@ url:
     aws cloudformation describe-stacks --stack-name {{stack}} --region {{region}} --profile {{profile}} \
         --query "Stacks[0].Outputs[?OutputKey=='WebhookUrl'].OutputValue" --output text
 
-# Tail de logs de una función: just logs fn=procesar
+# Tail de logs de una función: just logs fn=procesar (webhook|procesar|api)
 logs fn:
-    sam logs --stack-name {{stack}} --name {{fn}} --region {{region}} --profile {{profile}} --tail
+    aws logs tail /aws/lambda/{{stack}}-{{fn}} --follow --format short \
+        --region {{region}} --profile {{profile}}
 
 # Carga datos demo (3 emprendedoras) en DynamoDB
 seed:

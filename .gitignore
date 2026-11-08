@@ -27,3 +27,6 @@ dist/
 # Varios
 .DS_Store
 *.log
+
+# Mockups del panel (pesados; referencia local)
+docs/*.html

@@ -49,6 +49,7 @@ def test_faltan_datos_con_menos_de_3_semanas():
     ev = evaluar(movs, hoy=HOY)
     assert ev.semanas_con_datos == 2
     assert ev.estado == "Faltan datos"
+    assert ev.puntaje is None
 
 
 def test_estabilidad_alta_y_constancia():

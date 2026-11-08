@@ -105,5 +105,5 @@ def handler(event: dict, context: object) -> dict:
 
     perfiles = [_resumen_perfil(p, movs_repo) for p in perfiles_repo.listar()]
     # Apta primero, luego En proceso, y Faltan datos al final; desempata por puntaje.
-    perfiles.sort(key=lambda p: (ORDEN_ESTADO.get(p["estado"], 9), -p["puntaje"]))
+    perfiles.sort(key=lambda p: (ORDEN_ESTADO.get(p["estado"], 9), -(p["puntaje"] or 0)))
     return _json(200, {"perfiles": perfiles})

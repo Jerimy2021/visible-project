@@ -142,7 +142,7 @@ def main() -> None:
         ev = evaluar(movimientos[cfg["telefono"]], hoy=HOY)
         print(
             f"  {cfg['nombre']:<16} {cfg['rubro']:<7} {cfg['zona']:<8} "
-            f"puntaje={ev.puntaje:>3} estado={ev.estado:<12} "
+            f"puntaje={str(ev.puntaje):>4} estado={ev.estado:<12} "
             f"tend={ev.tendencia_pct:>6}% estab={ev.estabilidad:<5} "
             f"const={ev.constancia} yape={ev.coincidencia_yape_pct} "
             f"monto={ev.decision.monto}"

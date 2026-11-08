@@ -19,6 +19,11 @@ def leer(nombre: str, *, descifrar: bool = False) -> str:
     return valor
 
 
+def invalidar(nombre: str, *, descifrar: bool = False) -> None:
+    """Descarta el valor cacheado (p. ej. tras un 401 por token rotado)."""
+    _cache.pop((nombre, descifrar), None)
+
+
 def nombre_param(env_var: str) -> str:
     """Nombre del parámetro SSM configurado en una variable de entorno."""
     return os.environ[env_var]

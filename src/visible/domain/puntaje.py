@@ -65,7 +65,7 @@ class Decision:
 @dataclass
 class Evaluacion:
     estado: str
-    puntaje: int
+    puntaje: int | None  # None cuando el estado es "Faltan datos"
     semanas_con_datos: int
     ventas_semana_promedio: float
     tendencia_pct: float
@@ -241,12 +241,15 @@ def evaluar(movimientos: list[Movimiento], hoy: date | None = None) -> Evaluacio
     else:
         estado = ESTADO_PROCESO
 
+    # En "Faltan datos" el puntaje no es confiable: el panel muestra "—".
+    puntaje_expuesto = None if estado == ESTADO_FALTAN else puntaje
+
     # Base para el crédito: ganancia promedio semanal
     base_semanal = (tot_v - tot_g) / semanas_con_datos if semanas_con_datos else Decimal(0)
 
     return Evaluacion(
         estado=estado,
-        puntaje=puntaje,
+        puntaje=puntaje_expuesto,
         semanas_con_datos=semanas_con_datos,
         ventas_semana_promedio=float(_q2(prom_ventas)),
         tendencia_pct=round(float(tendencia), 1),
