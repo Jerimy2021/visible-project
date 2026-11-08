@@ -1,0 +1,115 @@
+"""Adaptador inbound: webhook de Meta WhatsApp Cloud API sobre HttpApi (v2.0).
+
+GET  /webhook -> verificación del webhook (hub.challenge).
+POST /webhook -> notificaciones de mensajes, validadas con X-Hub-Signature-256.
+"""
+
+import base64
+import hashlib
+import hmac
+import json
+import os
+
+from visible.adapters.outbound import secrets
+from visible.adapters.outbound.whatsapp_sender import WhatsAppSender
+from visible.application.eco import construir_eco
+from visible.application.mensajero import Mensajero
+from visible.domain.mensaje import MensajeEntrante
+
+# --- Firma (X-Hub-Signature-256) ------------------------------------------
+
+
+def firmar(app_secret: str, raw: bytes) -> str:
+    """Firma estilo Meta: 'sha256=' + HMAC-SHA256(app_secret, bytes crudos del body)."""
+    mac = hmac.new(app_secret.encode("utf-8"), raw, hashlib.sha256)
+    return "sha256=" + mac.hexdigest()
+
+
+def firma_valida(app_secret: str, raw: bytes, cabecera: str) -> bool:
+    """Compara en tiempo constante la firma esperada con el header recibido."""
+    return hmac.compare_digest(firmar(app_secret, raw), cabecera or "")
+
+
+# --- Verificación GET ------------------------------------------------------
+
+
+def responder_verificacion(
+    mode: str, token_recibido: str, challenge: str, token_esperado: str
+) -> dict:
+    """Devuelve el challenge en text/plain si mode=subscribe y el token coincide."""
+    if mode == "subscribe" and hmac.compare_digest(token_recibido or "", token_esperado):
+        return {
+            "statusCode": 200,
+            "headers": {"Content-Type": "text/plain"},
+            "body": challenge or "",
+        }
+    return {"statusCode": 403, "headers": {"Content-Type": "text/plain"}, "body": "Forbidden"}
+
+
+# --- Parseo de mensajes ----------------------------------------------------
+
+_TIPOS_MEDIA = ("image", "audio", "document", "video", "sticker")
+
+
+def parsear_mensajes(payload: dict) -> list[MensajeEntrante]:
+    """Extrae los mensajes entrantes. Ignora notificaciones de `statuses`."""
+    mensajes: list[MensajeEntrante] = []
+    for entry in payload.get("entry", []):
+        for change in entry.get("changes", []):
+            value = change.get("value", {})
+            for msg in value.get("messages", []):
+                mensajes.append(_a_mensaje(msg))
+    return mensajes
+
+
+def _a_mensaje(msg: dict) -> MensajeEntrante:
+    telefono = msg.get("from", "")
+    tipo = msg.get("type", "")
+    if tipo == "text":
+        return MensajeEntrante(telefono=telefono, texto=msg.get("text", {}).get("body", ""))
+    if tipo in _TIPOS_MEDIA:
+        media = msg.get(tipo, {})
+        texto = media.get("caption", "")
+        medios = ((media.get("id", ""), media.get("mime_type", "")),)
+        return MensajeEntrante(telefono=telefono, texto=texto, medios=medios)
+    return MensajeEntrante(telefono=telefono, texto="")
+
+
+# --- Handler ---------------------------------------------------------------
+
+
+def _raw_body(event: dict) -> bytes:
+    body = event.get("body") or ""
+    if event.get("isBase64Encoded"):
+        return base64.b64decode(body)
+    return body.encode("utf-8")
+
+
+def _responder(mensajes: list[MensajeEntrante], mensajero: Mensajero) -> None:
+    for mensaje in mensajes:
+        mensajero.enviar_texto(mensaje.telefono, construir_eco(mensaje))
+
+
+def handler(event: dict, context: object) -> dict:
+    metodo = event.get("requestContext", {}).get("http", {}).get("method", "")
+
+    if metodo == "GET":
+        qs = event.get("queryStringParameters") or {}
+        esperado = secrets.leer(os.environ["META_VERIFY_TOKEN_PARAM"], descifrar=True)
+        return responder_verificacion(
+            qs.get("hub.mode", ""),
+            qs.get("hub.verify_token", ""),
+            qs.get("hub.challenge", ""),
+            esperado,
+        )
+
+    raw = _raw_body(event)
+    headers = {k.lower(): v for k, v in (event.get("headers") or {}).items()}
+    app_secret = secrets.leer(os.environ["META_APP_SECRET_PARAM"], descifrar=True)
+    if not firma_valida(app_secret, raw, headers.get("x-hub-signature-256", "")):
+        return {"statusCode": 403, "headers": {"Content-Type": "text/plain"}, "body": "Forbidden"}
+
+    payload = json.loads(raw or b"{}")
+    _responder(parsear_mensajes(payload), WhatsAppSender())
+    # Meta reintenta si no recibe 200 rápido.
+    return {"statusCode": 200, "headers": {"Content-Type": "text/plain"}, "body": "OK"}

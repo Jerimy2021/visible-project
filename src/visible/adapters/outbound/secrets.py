@@ -1,20 +1,24 @@
-"""Lectura de secretos desde SSM Parameter Store (SecureString), cacheada."""
+"""Lectura de parámetros desde SSM Parameter Store, cacheada a nivel de módulo."""
 
 import os
 
-_cache: dict[str, str] = {}
+_cache: dict[tuple[str, bool], str] = {}
 
 
-def obtener_token(param_name: str | None = None) -> str:
-    """Lee el token de Twilio desde SSM con descifrado. Cachea a nivel de módulo."""
-    nombre = param_name or os.environ["TWILIO_TOKEN_PARAM"]
-    if nombre in _cache:
-        return _cache[nombre]
+def leer(nombre: str, *, descifrar: bool = False) -> str:
+    """Lee un parámetro de SSM. descifrar=True para SecureString. Cachea el valor."""
+    clave = (nombre, descifrar)
+    if clave in _cache:
+        return _cache[clave]
 
     import boto3  # import perezoso: el dominio/tests no requieren el SDK
 
     ssm = boto3.client("ssm")
-    resp = ssm.get_parameter(Name=nombre, WithDecryption=True)
-    valor = resp["Parameter"]["Value"]
-    _cache[nombre] = valor
+    valor = ssm.get_parameter(Name=nombre, WithDecryption=descifrar)["Parameter"]["Value"]
+    _cache[clave] = valor
     return valor
+
+
+def nombre_param(env_var: str) -> str:
+    """Nombre del parámetro SSM configurado en una variable de entorno."""
+    return os.environ[env_var]

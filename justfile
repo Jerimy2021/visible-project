@@ -27,6 +27,11 @@ deploy: build
     eval "$(aws configure export-credentials --profile {{profile}} --format env)" && \
         env -u AWS_PROFILE sam deploy
 
+# Imprime el verify token de Meta (para pegarlo en la config del webhook)
+verify-token:
+    aws ssm get-parameter --name /visible/meta/verify_token --with-decryption \
+        --profile {{profile}} --region {{region}} --query Parameter.Value --output text
+
 # Imprime el output WebhookUrl del stack desplegado
 url:
     aws cloudformation describe-stacks --stack-name {{stack}} --region {{region}} --profile {{profile}} \

@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
-Description: Visible - webhook de WhatsApp (Twilio sandbox) con eco y validacion de firma
+Description: Visible - webhook de WhatsApp (Meta Cloud API) con eco y validacion de firma
 
 Resources:
   WebhookLogGroup:
@@ -15,7 +15,7 @@ Resources:
     Properties:
       FunctionName: !Sub "${AWS::StackName}-webhook"
       CodeUri: ../src
-      Handler: visible.adapters.inbound.twilio_webhook.handler
+      Handler: visible.adapters.inbound.meta_webhook.handler
       Runtime: python3.12
       Architectures:
         - arm64
@@ -23,13 +23,17 @@ Resources:
       MemorySize: 256
       Environment:
         Variables:
-          TWILIO_TOKEN_PARAM: /visible/twilio/auth_token
+          GRAPH_API_VERSION: v25.0
+          META_ACCESS_TOKEN_PARAM: /visible/meta/access_token
+          META_APP_SECRET_PARAM: /visible/meta/app_secret
+          META_VERIFY_TOKEN_PARAM: /visible/meta/verify_token
+          META_PHONE_NUMBER_ID_PARAM: /visible/meta/phone_number_id
       Policies:
         - Statement:
-            - Sid: LeerTokenTwilio
+            - Sid: LeerParamsMeta
               Effect: Allow
               Action: ssm:GetParameter
-              Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/visible/twilio/auth_token"
+              Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/visible/meta/*"
             - Sid: DescifrarViaSsm
               Effect: Allow
               Action: kms:Decrypt
@@ -38,13 +42,18 @@ Resources:
                 StringEquals:
                   kms:ViaService: !Sub "ssm.${AWS::Region}.amazonaws.com"
       Events:
-        Webhook:
+        WebhookPost:
           Type: HttpApi
           Properties:
             Path: /webhook
             Method: POST
+        WebhookGet:
+          Type: HttpApi
+          Properties:
+            Path: /webhook
+            Method: GET
 
 Outputs:
   WebhookUrl:
-    Description: URL del webhook para configurar en el sandbox de Twilio
+    Description: URL del webhook para configurar en Meta (callback URL)
     Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/webhook"
