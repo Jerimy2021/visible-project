@@ -9,6 +9,8 @@ export interface ResumenPerfil {
   puntaje: number | null;
   estado: Estado;
   ventas_semana_promedio: number;
+  tendencia_pct?: number;
+  semanas_con_datos?: number;
 }
 
 export interface Decision {

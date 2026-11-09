@@ -49,11 +49,19 @@ const iniciales = (n: string) =>
   (n || "·").split(" ").slice(0, 2).map((p) => p[0]?.toUpperCase() ?? "").join("") || "·";
 
 type Tab = "inicio" | "tableros" | "credito";
+type IrA = (t: Tab, seccion?: string) => void;
 
 export default function Emprendedora({ id }: { id: string }) {
   const [ficha, setFicha] = useState<Ficha | null>(null);
   const [error, setError] = useState(false);
   const [tab, setTab] = useState<Tab>("inicio");
+  const [seccion, setSeccion] = useState<string | null>(null);
+  // Cambiar de pestaña siempre empieza arriba, o en la sección pedida (p. ej. "Gastos del negocio").
+  const irA: IrA = (t, s) => { setTab(t); setSeccion(s ?? null); };
+  useEffect(() => {
+    if (seccion) document.getElementById(seccion)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    else window.scrollTo(0, 0);
+  }, [tab, seccion]);
 
   // Auto-refresco cada 10 s: lo que manda por WhatsApp aparece solo.
   useEffect(() => {
@@ -96,7 +104,7 @@ export default function Emprendedora({ id }: { id: string }) {
           <span className="ella-sync">✓ Sincronizado</span>
         </header>
 
-        {tab === "inicio" && <Inicio ficha={ficha} irA={setTab} />}
+        {tab === "inicio" && <Inicio ficha={ficha} irA={irA} />}
         {tab === "tableros" && <Tableros ficha={ficha} />}
         {tab === "credito" && <Credito ficha={ficha} />}
       </div>
@@ -104,7 +112,7 @@ export default function Emprendedora({ id }: { id: string }) {
       <nav className="ella-nav">
         {([["inicio", "⌂", "Inicio"], ["tableros", "▥", "Tableros"], ["credito", "◎", "Mi crédito"]] as const).map(
           ([k, ic, l]) => (
-            <button key={k} className={tab === k ? "on" : ""} onClick={() => { setTab(k); window.scrollTo(0, 0); }}>
+            <button key={k} className={tab === k ? "on" : ""} onClick={() => irA(k)}>
               <span className="ic">{ic}</span>
               {l}
             </button>
@@ -116,7 +124,7 @@ export default function Emprendedora({ id }: { id: string }) {
 }
 
 /* ---------- Inicio ---------- */
-function Inicio({ ficha, irA }: { ficha: Ficha; irA: (t: Tab) => void }) {
+function Inicio({ ficha, irA }: { ficha: Ficha; irA: IrA }) {
   const e = ficha.emprendedora!;
   const s = e.semana;
   const max = Math.max(1, ...e.por_dia.map((d) => Math.abs(d.ganancia)));
@@ -153,10 +161,10 @@ function Inicio({ ficha, irA }: { ficha: Ficha; irA: (t: Tab) => void }) {
 
       <h3 className="ella-h">Mis tableros</h3>
       <div className="ella-tiles">
-        <Tile ic="↑" cls="in" l="Ingresos" v={s.ventas} onClick={() => irA("tableros")} />
-        <Tile ic="▢" cls="neg" l="Gastos del negocio" v={s.gastos_negocio} onClick={() => irA("tableros")} />
-        <Tile ic="⌂" cls="per" l="Gastos personales" v={s.gastos_personales} onClick={() => irA("tableros")} />
-        <Tile ic="⇄" cls="aho" l="Cuotas de deuda" v={s.cuotas_deuda} onClick={() => irA("tableros")} />
+        <Tile ic="↑" cls="in" l="Ingresos" v={s.ventas} onClick={() => irA("tableros", "sec-ingreso")} />
+        <Tile ic="▢" cls="neg" l="Gastos del negocio" v={s.gastos_negocio} onClick={() => irA("tableros", "sec-gasto_negocio")} />
+        <Tile ic="⌂" cls="per" l="Gastos personales" v={s.gastos_personales} onClick={() => irA("tableros", "sec-gasto_personal")} />
+        <Tile ic="⇄" cls="aho" l="Cuotas de deuda" v={s.cuotas_deuda} onClick={() => irA("tableros", "sec-deuda")} />
       </div>
 
       <section className="ella-card">
@@ -165,7 +173,7 @@ function Inicio({ ficha, irA }: { ficha: Ficha; irA: (t: Tab) => void }) {
           <span className="ella-muted">Registra por WhatsApp</span>
         </div>
         <ListaMovs movs={ficha.movimientos.slice(0, 3)} />
-        <button className="ella-btn-soft" onClick={() => irA("tableros")}>Ver todos</button>
+        <button className="ella-btn-soft" onClick={() => irA("tableros", "sec-registros")}>Ver todos</button>
       </section>
 
       <CaminoCredito ficha={ficha} onClick={() => irA("credito")} />
@@ -250,12 +258,12 @@ function Tableros({ ficha }: { ficha: Ficha }) {
       </section>
 
       <h3 className="ella-h">¿En qué se fue? · últimas 4 semanas</h3>
-      <Desglose titulo="Ingresos" cls="in" datos={e.subcategorias_mes.ingreso} />
-      <Desglose titulo="Gastos del negocio" cls="neg" datos={e.subcategorias_mes.gasto_negocio} />
-      <Desglose titulo="Gastos personales" cls="per" datos={e.subcategorias_mes.gasto_personal} />
-      <Desglose titulo="Deudas" cls="deu" datos={e.subcategorias_mes.deuda} />
+      <Desglose id="sec-ingreso" titulo="Ingresos" cls="in" datos={e.subcategorias_mes.ingreso} />
+      <Desglose id="sec-gasto_negocio" titulo="Gastos del negocio" cls="neg" datos={e.subcategorias_mes.gasto_negocio} />
+      <Desglose id="sec-gasto_personal" titulo="Gastos personales" cls="per" datos={e.subcategorias_mes.gasto_personal} />
+      <Desglose id="sec-deuda" titulo="Deudas" cls="deu" datos={e.subcategorias_mes.deuda} />
 
-      <section className="ella-card">
+      <section className="ella-card" id="sec-registros">
         <h3 className="ella-h" style={{ marginTop: 0 }}>Todos tus registros</h3>
         <ListaMovs movs={ficha.movimientos} />
       </section>
@@ -274,13 +282,13 @@ function Fila({ l, v, cls = "", signo = "", fuerte = false, verde = false }: {
   );
 }
 
-function Desglose({ titulo, cls, datos }: { titulo: string; cls: string; datos?: Record<string, number> }) {
+function Desglose({ id, titulo, cls, datos }: { id: string; titulo: string; cls: string; datos?: Record<string, number> }) {
   const filas = Object.entries(datos ?? {}).sort((a, b) => b[1] - a[1]);
-  if (!filas.length) return null;
   const max = Math.max(...filas.map(([, v]) => v), 1);
   return (
-    <section className="ella-card">
+    <section className="ella-card" id={id}>
       <h3 className="ella-h" style={{ marginTop: 0 }}>{titulo}</h3>
+      {!filas.length && <p className="ella-muted">Sin registros en las últimas 4 semanas.</p>}
       {filas.map(([k, v]) => (
         <div key={k} className="ella-des">
           <div className="row-sb"><span>{SUB[k] ?? k}</span><strong>{soles(v)}</strong></div>

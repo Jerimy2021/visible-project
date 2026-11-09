@@ -76,6 +76,8 @@ def _resumen_perfil(perfil: dict, movs_repo: DynamoRepositorioMovimientos) -> di
         "puntaje": ev.puntaje,
         "estado": ev.estado,
         "ventas_semana_promedio": ev.ventas_semana_promedio,
+        "tendencia_pct": ev.tendencia_pct,
+        "semanas_con_datos": ev.semanas_con_datos,
     }
 
 

@@ -85,6 +85,7 @@ body {
 .btn { width: 100%; border: 0; border-radius: 11px; padding: 11px; font-weight: 700;
   cursor: pointer; font-size: 14px; }
 .btn.primary { background: var(--azul); color: #fff; }
+.btn:disabled { opacity: .55; cursor: not-allowed; }
 .btn.ghost { background: #fff; color: var(--azul); border: 1px solid #cfdcf6; }
 
 table { width: 100%; border-collapse: collapse; }
@@ -187,7 +188,7 @@ h3 { font-size: 14px; margin: 0 0 8px; }
 .ella-tile-ic.per { background: #fdf0e1; color: var(--e-per); }
 .ella-tile-ic.deu, .ella-tile-ic.aho { background: #eef0ee; color: var(--e-osc); }
 .ella-tile-ic.pc { background: #eef0f3; color: #6b7280; }
-.ella-card { background: #fff; border-radius: 18px; padding: 16px; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+.ella-card { scroll-margin-top: 12px; background: #fff; border-radius: 18px; padding: 16px; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
 .ella-row { display: flex; gap: 14px; align-items: center; }
 .row-sb { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
 .ella-movs { list-style: none; margin: 10px 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
