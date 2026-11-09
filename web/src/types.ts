@@ -52,6 +52,28 @@ export interface Movimiento {
   foto_url: string | null;
 }
 
+export interface Totales {
+  ventas: number;
+  gastos_negocio: number;
+  gastos_personales: number;
+  cuotas_deuda: number;
+  ganancia: number;
+  ahorro: number;
+  por_cobrar: number;
+  por_clasificar: number;
+}
+
+export interface ResumenEmprendedora {
+  desde: string;
+  hasta: string;
+  semana: Totales;
+  variacion_ganancia_pct: number | null;
+  por_dia: { fecha: string; letra: string; ganancia: number }[];
+  mes: Totales;
+  subcategorias_mes: Record<string, Record<string, number>>;
+  dias_con_registro_7: number;
+}
+
 export interface Ficha {
   id: string;
   telefono_mascara: string;
@@ -60,5 +82,6 @@ export interface Ficha {
   zona: string;
   consentimiento: string;
   evaluacion: Evaluacion;
+  emprendedora?: ResumenEmprendedora;
   movimientos: Movimiento[];
 }

@@ -142,3 +142,26 @@ def test_totales_ultimos_7_dias():
     movs = [venta(0, "100"), venta(10, "500")]
     assert totales_semana(movs, hoy=HOY, dias=7)["ventas"] == Decimal("100")
     assert totales_semana(movs, hoy=HOY)["ventas"] == Decimal("600")
+
+
+def test_resumen_emprendedora_ahorro_y_semana():
+    from visible.domain.emprendedora import resumen_emprendedora
+
+    def mov(dias, monto, cat, sub=""):
+        return Movimiento(HOY - timedelta(days=dias), Decimal(monto), "x", cat, subcategoria=sub)
+
+    movs = [
+        mov(0, "1000", Categoria.INGRESO),
+        mov(1, "300", Categoria.GASTO_NEGOCIO, "mercaderia"),
+        mov(2, "200", Categoria.GASTO_PERSONAL, "alimentacion"),
+        mov(3, "100", Categoria.DEUDA, "cuota_pagada"),
+        mov(3, "500", Categoria.DEUDA, "prestamo_recibido"),  # no es ahorro ni gasto
+        mov(9, "350", Categoria.INGRESO),  # semana anterior
+    ]
+    r = resumen_emprendedora(movs, HOY)
+    assert r["semana"]["ganancia"] == 700
+    assert r["semana"]["ahorro"] == 400  # 700 - 200 - 100
+    assert r["variacion_ganancia_pct"] == 100.0  # 700 vs 350
+    assert len(r["por_dia"]) == 7 and r["por_dia"][-1]["ganancia"] == 1000
+    assert r["mes"]["ventas"] == 1350
+    assert r["subcategorias_mes"]["gasto_negocio"] == {"mercaderia": 300.0}

@@ -7,13 +7,13 @@ GET /perfiles/{id}       -> ficha completa (indicadores, series, decisión, últ
 Nunca expone el número de teléfono completo: usa un id opaco para la ruta.
 """
 
-import hashlib
 import json
 import os
 from decimal import Decimal
 
 from visible.adapters.outbound.dynamo_movimientos import DynamoRepositorioMovimientos
 from visible.adapters.outbound.dynamo_perfiles import DynamoPerfiles
+from visible.domain.emprendedora import id_opaco, resumen_emprendedora
 from visible.domain.puntaje import (
     ESTADO_APTA,
     ESTADO_FALTAN,
@@ -28,7 +28,7 @@ ORDEN_ESTADO = {ESTADO_APTA: 0, ESTADO_PROCESO: 1, ESTADO_FALTAN: 2}
 
 
 def _id_opaco(telefono: str) -> str:
-    return hashlib.sha256(f"visible:{telefono}".encode()).hexdigest()[:16]
+    return id_opaco(telefono)
 
 
 def _mascara(telefono: str) -> str:
@@ -82,7 +82,8 @@ def _resumen_perfil(perfil: dict, movs_repo: DynamoRepositorioMovimientos) -> di
 def _ficha(perfil: dict, movs_repo: DynamoRepositorioMovimientos, bucket: str) -> dict:
     telefono = perfil["telefono"]
     hoy = hoy_lima()
-    ev = evaluar(movs_repo.leer_ventana(telefono, hoy), hoy=hoy)
+    ventana = movs_repo.leer_ventana(telefono, hoy)
+    ev = evaluar(ventana, hoy=hoy)
     ultimos = [
         {
             "fecha": it.get("fecha"),
@@ -105,6 +106,7 @@ def _ficha(perfil: dict, movs_repo: DynamoRepositorioMovimientos, bucket: str) -
         "zona": perfil.get("zona", ""),
         "consentimiento": perfil.get("consentimiento", ""),
         "evaluacion": ev.to_dict(),
+        "emprendedora": resumen_emprendedora(ventana, hoy),
         "movimientos": ultimos,
     }
 

@@ -17,6 +17,7 @@ from visible.adapters.outbound.s3_evidencias import S3Evidencias
 from visible.adapters.outbound.whatsapp_sender import WhatsAppSender
 from visible.application.extractor import Contenido, Extractor
 from visible.application.procesar import procesar, soles_es
+from visible.domain.emprendedora import id_opaco
 from visible.domain.mensaje import MensajeEntrante, desde_dict
 from visible.domain.puntaje import hoy_lima, totales_semana
 
@@ -112,7 +113,8 @@ def _resumen_semana(telefono: str) -> dict:
     link = os.environ.get("LINK_PANEL", "")
     sender = WhatsAppSender()
     if link:
-        sender.enviar_link(telefono, texto, "Ver mi negocio", link)
+        # Abre la vista de la emprendedora (no el panel del analista).
+        sender.enviar_link(telefono, texto, "Ver mi negocio", f"{link}/?mi={id_opaco(telefono)}")
     else:
         sender.enviar_texto(telefono, texto)
     return {"estado": "resumen"}
