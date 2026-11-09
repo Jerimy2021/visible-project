@@ -37,6 +37,7 @@ class Movimiento:
     confianza: float = 1.0
     origen: str = ""  # "yape" (incluye plin) o "efectivo"
     por_cobrar: bool = False
+    tipo_entrada: str = ""  # cuaderno | yape | plin | texto
 
     @property
     def es_ingreso(self) -> bool:

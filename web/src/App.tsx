@@ -295,6 +295,10 @@ function Confiabilidad({ ev }: { ev: Ficha["evaluacion"] }) {
       <p>Semanas con registro: <strong>{ev.semanas_con_datos} / 4</strong></p>
       <p>Ventas verificadas por Yape/Plin: <strong>{ev.coincidencia_yape_pct == null ? "—" : pct(ev.coincidencia_yape_pct)}</strong></p>
       <p>Variación de ventas (CV): <strong>{pct(ev.coef_variacion_pct)}</strong> → {ev.estabilidad}</p>
+      <div className="alert">
+        <span className="dot" style={{ background: "#2a4ba8" }} />
+        <span><strong>Antiduplicados activo:</strong> cada foto se registra una sola vez (huella SHA-256 por usuaria); las capturas repetidas se descartan.</span>
+      </div>
       <p className="muted">La confiabilidad sube con más semanas de registro y más pagos digitales verificables.</p>
     </div>
   );

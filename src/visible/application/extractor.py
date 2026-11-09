@@ -33,6 +33,7 @@ class Extraccion:
     legible: bool = True
     preguntas: list[Pregunta] = field(default_factory=list)
     alertas: list[str] = field(default_factory=list)
+    tipo_entrada: str = ""  # cuaderno | yape | plin | texto
 
 
 class Extractor(Protocol):

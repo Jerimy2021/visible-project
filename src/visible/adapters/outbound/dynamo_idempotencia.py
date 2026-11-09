@@ -26,6 +26,26 @@ class DynamoIdempotencia:
                 return False
             raise
 
+    def registrar_imagen(self, telefono: str, sha: str, fecha_iso: str) -> str | None:
+        """Antiduplicados por foto. None si es nueva (la registra); si ya existía,
+        devuelve la fecha en que se registró. Sin TTL: persiste durante el piloto."""
+        import boto3
+        from botocore.exceptions import ClientError
+
+        tabla = boto3.resource("dynamodb").Table(self.tabla_nombre)
+        pk = f"img#{telefono}#{sha}"
+        try:
+            tabla.put_item(
+                Item={"pk": pk, "fecha": fecha_iso},
+                ConditionExpression="attribute_not_exists(pk)",
+            )
+            return None
+        except ClientError as e:
+            if e.response["Error"]["Code"] != "ConditionalCheckFailedException":
+                raise
+            item = tabla.get_item(Key={"pk": pk}).get("Item", {})
+            return item.get("fecha", "")
+
     def liberar(self, mensaje_id: str) -> None:
         """Borra la reserva para que un reintento async pueda reprocesar."""
         import boto3

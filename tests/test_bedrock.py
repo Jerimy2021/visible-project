@@ -22,6 +22,7 @@ def _resp(input_dict: dict) -> dict:
 
 RESPUESTA = _resp(
     {
+        "tipo_entrada": "cuaderno",
         "legible": True,
         "movimientos": [
             {
@@ -59,16 +60,47 @@ RESPUESTA = _resp(
 def test_parseo_extraccion():
     ext = parsear_respuesta(RESPUESTA, RECEPCION)
     assert ext.legible is True
+    assert ext.tipo_entrada == "cuaderno"
     assert len(ext.movimientos) == 2
     m0 = ext.movimientos[0]
     assert m0.monto == Decimal("75")
     assert m0.categoria is Categoria.INGRESO
     assert m0.origen == "yape"  # subcategoria venta_yape
+    assert m0.tipo_entrada == "cuaderno"
     # fecha de 2025 (>60 días) se normaliza a la recepción
     assert ext.movimientos[1].fecha == RECEPCION
     assert ext.movimientos[1].origen == "efectivo"
     assert len(ext.preguntas) == 1
     assert ext.alertas == ["monto_inusual"]
+
+
+def test_parseo_captura_yape():
+    ext = parsear_respuesta(
+        _resp(
+            {
+                "tipo_entrada": "yape",
+                "legible": True,
+                "movimientos": [
+                    {
+                        "fecha": "2026-11-08",
+                        "texto_original": "Te yapeó María S/ 50",
+                        "concepto": "Yape de María",
+                        "monto": 50,
+                        "categoria": "ingreso",
+                        "subcategoria": "venta_yape",
+                        "confianza": 0.97,
+                    }
+                ],
+            }
+        ),
+        RECEPCION,
+    )
+    assert ext.tipo_entrada == "yape"
+    m = ext.movimientos[0]
+    assert m.categoria is Categoria.INGRESO
+    assert m.subcategoria == "venta_yape"
+    assert m.origen == "yape"
+    assert m.tipo_entrada == "yape"
 
 
 def test_parseo_origen_yape_por_texto():

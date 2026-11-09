@@ -22,6 +22,7 @@ def _item_a_movimiento(item: dict) -> Movimiento:
         confianza=float(item.get("confianza", 0)),
         origen=item.get("origen", ""),
         por_cobrar=bool(item.get("por_cobrar", False)),
+        tipo_entrada=item.get("tipo_entrada", ""),
     )
 
 
@@ -54,6 +55,7 @@ class DynamoRepositorioMovimientos:
                     "confianza": Decimal(str(m.confianza)),
                     "origen": m.origen,
                     "por_cobrar": m.por_cobrar,
+                    "tipo_entrada": m.tipo_entrada,
                     "creado_en": creado,
                 }
                 if evidencia_key:

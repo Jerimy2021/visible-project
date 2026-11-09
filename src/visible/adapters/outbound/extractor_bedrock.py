@@ -47,6 +47,7 @@ _PREGUNTA = {
 TOOL_SCHEMA = {
     "type": "object",
     "properties": {
+        "tipo_entrada": {"type": "string", "enum": ["cuaderno", "yape", "plin", "texto"]},
         "fecha_foto": {"type": "string"},
         "legible": {"type": "boolean"},
         "movimientos": {"type": "array", "items": _MOVIMIENTO},
@@ -73,22 +74,13 @@ def _cargar_prompt() -> str:
 
 
 def construir_system_prompt(contenido: Contenido, recepcion: datetime) -> str:
-    """Inyecta fecha de recepción y conceptos aprendidos al prompt de Flor."""
-    base = _cargar_prompt()
-    base = base.replace(
-        "la fecha de la foto", f"la fecha de recepción ({recepcion.date().isoformat()})"
-    )
-    base = base.replace("el año de la foto", "el año de la fecha de recepción")
-    base = base.replace("pagado por Yape", "pagado por Yape o Plin")
+    """Reemplaza los placeholders {fecha_recepcion} y {conceptos_aprendidos} del prompt."""
     conceptos = "; ".join(contenido.conceptos) if contenido.conceptos else "ninguno todavía"
-    cabecera = (
-        f"Fecha y hora de recepción: {recepcion.strftime('%Y-%m-%d %H:%M')} (America/Lima)\n"
-        f"Conceptos aprendidos de esta usuaria: {conceptos}\n\n"
-        "Reglas de fecha: para fechas incompletas usa el mes/año de la fecha de recepción. "
-        "Nunca generes fechas futuras ni de más de 60 días atrás.\n"
-        "Pagos por Yape o Plin cuentan como pago digital (subcategoria venta_yape en ventas).\n\n"
+    return (
+        _cargar_prompt()
+        .replace("{fecha_recepcion}", recepcion.strftime("%Y-%m-%d %H:%M"))
+        .replace("{conceptos_aprendidos}", conceptos)
     )
-    return cabecera + base
 
 
 def _tool_input(respuesta: dict) -> dict | None:
@@ -106,7 +98,7 @@ def _origen(item: dict) -> str:
     return "efectivo"
 
 
-def _a_movimiento(item: dict, recepcion: date) -> Movimiento:
+def _a_movimiento(item: dict, recepcion: date, tipo_entrada: str = "") -> Movimiento:
     try:
         monto = Decimal(str(item["monto"]))
     except (InvalidOperation, KeyError, TypeError):
@@ -128,6 +120,7 @@ def _a_movimiento(item: dict, recepcion: date) -> Movimiento:
         confianza=float(item.get("confianza", 0.0)),
         origen=_origen(item),
         por_cobrar=bool(item.get("por_cobrar", False)),
+        tipo_entrada=tipo_entrada,
     )
 
 
@@ -137,7 +130,8 @@ def parsear_respuesta(respuesta: dict, recepcion: date | None = None) -> Extracc
     uso = _tool_input(respuesta)
     if uso is None:
         return Extraccion(legible=False)
-    movimientos = [_a_movimiento(m, recepcion) for m in uso.get("movimientos", [])]
+    tipo_entrada = uso.get("tipo_entrada", "")
+    movimientos = [_a_movimiento(m, recepcion, tipo_entrada) for m in uso.get("movimientos", [])]
     preguntas = [
         Pregunta(
             texto_original=p.get("texto_original", ""),
@@ -151,6 +145,7 @@ def parsear_respuesta(respuesta: dict, recepcion: date | None = None) -> Extracc
         legible=bool(uso.get("legible", True)),
         preguntas=preguntas,
         alertas=list(uso.get("alertas", [])),
+        tipo_entrada=tipo_entrada,
     )
 
 

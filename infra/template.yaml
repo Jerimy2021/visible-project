@@ -130,6 +130,7 @@ Resources:
               Action:
                 - dynamodb:PutItem
                 - dynamodb:DeleteItem
+                - dynamodb:GetItem
               Resource: !GetAtt IdempotenciaTable.Arn
             - Sid: EscribirPerfil
               Effect: Allow

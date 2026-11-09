@@ -4,6 +4,7 @@ Se invoca de forma asíncrona desde el webhook con el MensajeEntrante serializad
 o con un payload de clasificación (respuesta de botón/lista del usuario).
 """
 
+import hashlib
 import logging
 import os
 
@@ -16,13 +17,15 @@ from visible.adapters.outbound.s3_evidencias import S3Evidencias
 from visible.adapters.outbound.whatsapp_sender import WhatsAppSender
 from visible.application.extractor import Contenido, Extractor
 from visible.application.procesar import procesar
-from visible.domain.mensaje import MensajeEntrante, desde_dict
+from visible.domain.mensaje import desde_dict
+from visible.domain.puntaje import hoy_lima
 
 logging.getLogger().setLevel(logging.INFO)
 logger = logging.getLogger("visible.procesar")
 
 MENSAJE_CLASIFICADO = "✓ Guardado. La próxima vez lo clasifico solo."
 MENSAJE_ACK = "📷 Recibí tu foto, la estoy leyendo…"
+MENSAJE_DUPLICADA = "Esta foto ya la registré el {fecha} ✓"
 
 
 def _crear_extractor() -> Extractor:
@@ -34,19 +37,6 @@ def _crear_extractor() -> Extractor:
         return ext
     logger.info("extractor=fake")
     return FakeExtractor()
-
-
-def _construir_contenido(
-    mensaje: MensajeEntrante, conceptos: tuple[str, ...]
-) -> tuple[Contenido, str]:
-    """Devuelve (contenido, evidencia_key). La key es "" para mensajes de solo texto."""
-    if mensaje.medios:
-        media_id, mime = mensaje.medios[0]
-        datos, mime_real = MetaMediaDownloader().descargar(media_id)
-        mime_final = mime_real or mime
-        key = S3Evidencias().guardar(mensaje.telefono, media_id, datos, mime_final)
-        return Contenido(imagen=datos, mime_type=mime_final, conceptos=conceptos), key
-    return Contenido(texto=mensaje.texto, conceptos=conceptos), ""
 
 
 def _clasificar(event: dict) -> dict:
@@ -80,7 +70,26 @@ def handler(event: dict, context: object) -> dict:
         perfiles = DynamoPerfiles()
         perfiles.crear_si_no_existe(mensaje.telefono)
         conceptos = tuple(perfiles.conceptos(mensaje.telefono))
-        contenido, evidencia_key = _construir_contenido(mensaje, conceptos)
+
+        evidencia_key = ""
+        if mensaje.medios:
+            media_id, mime = mensaje.medios[0]
+            datos, mime_real = MetaMediaDownloader().descargar(media_id)
+            mime_final = mime_real or mime
+            # Antiduplicados: SHA-256 de la imagen por usuaria.
+            sha = hashlib.sha256(datos).hexdigest()
+            previa = idempotencia.registrar_imagen(mensaje.telefono, sha, hoy_lima().isoformat())
+            if previa is not None:
+                WhatsAppSender().enviar_texto(
+                    mensaje.telefono, MENSAJE_DUPLICADA.format(fecha=previa)
+                )
+                logger.info("imagen duplicada telefono=%s sha=%s", mensaje.telefono, sha[:12])
+                return {"estado": "duplicado_imagen", "fecha": previa}
+            evidencia_key = S3Evidencias().guardar(mensaje.telefono, media_id, datos, mime_final)
+            contenido = Contenido(imagen=datos, mime_type=mime_final, conceptos=conceptos)
+        else:
+            contenido = Contenido(texto=mensaje.texto, conceptos=conceptos)
+
         extraccion = procesar(
             mensaje.telefono,
             contenido,
