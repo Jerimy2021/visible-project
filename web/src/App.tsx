@@ -15,107 +15,130 @@ function Badge({ estado }: { estado: string }) {
 export default function App() {
   const [tab, setTab] = useState<"cartera" | "cliente">("cliente");
   const [toast, setToast] = useState<string | null>(null);
+  const [filtro, setFiltro] = useState<string | null>(null);
   const mostrarToast = (t: string) => {
     setToast(t);
     setTimeout(() => setToast(null), 2600);
+  };
+  const irACliente = (f: string | null) => {
+    setFiltro(f);
+    setTab("cliente");
   };
   return (
     <>
       <header className="header">
         <span className="marca">Visible para analistas</span>
-        <span className="sub">· BCP · simulación</span>
+        <span className="sub">· [BCP o Mibanco] · simulación</span>
         <nav className="tabs">
-          <button className={`tab ${tab === "cartera" ? "activo" : ""}`} onClick={() => setTab("cartera")}>Cartera</button>
-          <button className={`tab ${tab === "cliente" ? "activo" : ""}`} onClick={() => setTab("cliente")}>Por cliente</button>
+          <button className={`tab ${tab === "cartera" ? "activo" : ""}`} onClick={() => { setFiltro(null); setTab("cartera"); }}>Cartera</button>
+          <button className={`tab ${tab === "cliente" ? "activo" : ""}`} onClick={() => { setFiltro(null); setTab("cliente"); }}>Por cliente</button>
         </nav>
       </header>
       <main className="wrap">
-        {tab === "cartera" ? <Cartera /> : <PorCliente onToast={mostrarToast} />}
+        {tab === "cartera"
+          ? <Cartera onNavegar={irACliente} />
+          : <PorCliente onToast={mostrarToast} filtro={filtro} onLimpiarFiltro={() => setFiltro(null)} />}
       </main>
       {toast && <div className="toast">{toast}</div>}
     </>
   );
 }
 
-/* ---------- Pantalla 7: Cartera (datos simulados fijos) ---------- */
-function Cartera() {
-  const kpis = [
-    { l: "Autorizadas activas", v: "128" },
-    { l: "Aptas para crédito", v: "41" },
-    { l: "Monto desembolsable", v: "S/ 82,400" },
-    { l: "Mora piloto", v: "2.3%" },
-  ];
-  const alertas = [
-    { c: "#15803d", t: "19 nuevas emprendedoras con 4 semanas completas esta semana." },
-    { c: "#b45309", t: "7 perfiles con caída de ventas > 20% — revisar antes de ofrecer." },
-    { c: "#2a4ba8", t: "63% de las ventas registradas llegan por Yape/Plin (verificable)." },
-    { c: "#b91c1c", t: "2 perfiles con páginas de cuaderno repetidas — posible duplicado." },
-  ];
+/* ---------- Pantalla 7: Cartera ---------- */
+const KPIS_RETO = [
+  { l: "Emprendedoras con perfil crediticio", v: "58%" },
+  { l: "Aptas para su primer crédito", v: "1 146" },
+  { l: "Precisión de lectura (IA)", v: "72%" },
+  { l: "Cartera potencial a 6 meses", v: "S/ 12.9 M" },
+];
+const ALERTAS = [
+  { color: "#15803d", n: "19", t: "nuevas con 4 semanas completas", accion: "Ofrecer crédito", filtro: "Apta" },
+  { color: "#b91c1c", n: "7", t: "con caída de ventas > 20%", accion: "Revisar", filtro: null },
+  { color: "#2a4ba8", n: "41", t: "aptas sin oferta enviada", accion: "Enviar oferta", filtro: "Apta" },
+  { color: "#b45309", n: "33", t: "en proceso de registro", accion: "Seguimiento", filtro: "En proceso" },
+  { color: "#6b7280", n: "2", t: "Posible duplicado", accion: "Revisar fotos", filtro: null },
+];
+
+function Cartera({ onNavegar }: { onNavegar: (f: string | null) => void }) {
+  const [sub, setSub] = useState("resumen");
   return (
     <div className="stack">
-      <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-        <h2 style={{ margin: 0 }}>Cartera del piloto</h2>
-        <span className="simLabel">Datos simulados del piloto</span>
-      </div>
-      <div className="kpis">
-        {kpis.map((k) => (
-          <div className="card kpi" key={k.l}>
-            <div className="v">{k.v}</div>
-            <div className="l">{k.l}</div>
+      <div className="card">
+        <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
+          <div>
+            <div style={{ fontSize: 30, fontWeight: 800 }}>12 480 <span className="muted" style={{ fontSize: 16, fontWeight: 600 }}>emprendedoras</span></div>
+            <div className="row" style={{ gap: 7, marginTop: 8 }}>
+              <span className="pill" style={{ background: "#e7f5ec", color: "#15803d" }}>✓ con permiso</span>
+              <span className="chip">último mes</span>
+              <span className="pill">63% de ventas por Yape (verificable)</span>
+            </div>
           </div>
-        ))}
-      </div>
-      <div className="grid2">
-        <div className="card">
-          <h3>Distribución por estado</h3>
-          <BarsDistribucion />
+          <span className="simLabel">Datos simulados del piloto</span>
         </div>
-        <div className="card">
-          <h3>Alertas operativas</h3>
-          <div className="stack" style={{ marginTop: 4 }}>
-            {alertas.map((a, i) => (
-              <div className="alert" key={i}>
-                <span className="dot" style={{ background: a.c }} />
-                <span>{a.t}</span>
+        <div className="inner-tabs" style={{ marginTop: 14 }}>
+          {[["resumen", "Resumen"], ["demanda", "Demanda"], ["seguimiento", "Seguimiento"]].map(([k, l]) => (
+            <button key={k} className={`itab ${sub === k ? "activo" : ""}`} onClick={() => setSub(k)}>{l}</button>
+          ))}
+        </div>
+      </div>
+
+      {sub === "resumen" && (
+        <>
+          <div className="kpis kpis5">
+            {KPIS_RETO.map((k) => (
+              <div className="card kpi" key={k.l}>
+                <span className="reto">KPI reto</span>
+                <div className="v">{k.v}</div>
+                <div className="l">{k.l}</div>
               </div>
             ))}
+            <div className="card kpi">
+              <div className="v" style={{ color: "#15803d" }}>2.4%</div>
+              <div className="l">Mora del piloto · <span className="up">●</span> verde</div>
+            </div>
           </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
-function BarsDistribucion() {
-  const data = [
-    { l: "Apta", v: 41, c: "#15803d" },
-    { l: "En proceso", v: 54, c: "#b45309" },
-    { l: "Faltan datos", v: 33, c: "#9aa0ab" },
-  ];
-  const max = Math.max(...data.map((d) => d.v));
-  return (
-    <div className="stack" style={{ marginTop: 4 }}>
-      {data.map((d) => (
-        <div key={d.l}>
-          <div className="row" style={{ justifyContent: "space-between" }}>
-            <span className="muted">{d.l}</span>
-            <strong>{d.v}</strong>
+          <div className="card">
+            <h3>Alertas de hoy · automáticas</h3>
+            <div className="alertas-grid">
+              {ALERTAS.map((a, i) => (
+                <button key={i} className="alerta-card" style={{ borderTopColor: a.color }} onClick={() => onNavegar(a.filtro)}>
+                  <div className="alerta-n" style={{ color: a.color }}>{a.n}</div>
+                  <div className="alerta-t">{a.t}</div>
+                  <div className="alerta-a">→ {a.accion}</div>
+                </button>
+              ))}
+            </div>
           </div>
-          <div style={{ background: "#f1efe9", borderRadius: 8, height: 12, marginTop: 4 }}>
-            <div style={{ width: `${(d.v / max) * 100}%`, background: d.c, height: 12, borderRadius: 8 }} />
-          </div>
+        </>
+      )}
+
+      {sub === "demanda" && (
+        <div className="card">
+          <h3>Demanda de crédito</h3>
+          <p className="muted">1 146 aptas · S/ 12.9 M en solicitudes potenciales · ticket promedio S/ 1 100.</p>
+          <p className="muted">Concentración: Gamarra (ropa) y SJL (bodegas). Datos simulados del piloto.</p>
         </div>
-      ))}
+      )}
+      {sub === "seguimiento" && (
+        <div className="card">
+          <h3>Seguimiento de repago</h3>
+          <p className="muted">Mora 2.4% · 312 créditos vigentes · 98% de cuotas al día. Datos simulados del piloto.</p>
+        </div>
+      )}
     </div>
   );
 }
 
 /* ---------- Pantalla 5: Por cliente ---------- */
-function PorCliente({ onToast }: { onToast: (t: string) => void }) {
+function PorCliente({ onToast, filtro, onLimpiarFiltro }: {
+  onToast: (t: string) => void; filtro: string | null; onLimpiarFiltro: () => void;
+}) {
   const [perfiles, setPerfiles] = useState<ResumenPerfil[]>([]);
   const [sel, setSel] = useState<string | null>(null);
   const [ficha, setFicha] = useState<Ficha | null>(null);
   const [itab, setItab] = useState("resumen");
+  const visibles = filtro ? perfiles.filter((p) => p.estado === filtro) : perfiles;
 
   useEffect(() => {
     getPerfiles().then((ps) => {
@@ -139,8 +162,15 @@ function PorCliente({ onToast }: { onToast: (t: string) => void }) {
   return (
     <div className="cliente">
       <aside className="card lista">
-        <h3>Autorizadas</h3>
-        {perfiles.map((p) => (
+        <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+          <h3 style={{ margin: 0 }}>Autorizadas</h3>
+          {filtro && (
+            <button className="itab activo" onClick={onLimpiarFiltro} style={{ fontSize: 12 }}>
+              {filtro} ✕
+            </button>
+          )}
+        </div>
+        {visibles.map((p) => (
           <div key={p.id} className={`lista-item ${p.id === sel ? "sel" : ""}`} onClick={() => { setSel(p.id); setItab("resumen"); }}>
             <div className="ini">{iniciales(p.nombre || p.telefono_mascara)}</div>
             <div style={{ flex: 1, minWidth: 0 }}>
