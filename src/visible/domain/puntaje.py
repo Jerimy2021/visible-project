@@ -129,6 +129,25 @@ def _clamp(x: Decimal, lo: Decimal = Decimal(0), hi: Decimal = Decimal(1)) -> De
     return max(lo, min(hi, x))
 
 
+def totales_semana(movimientos: list[Movimiento], hoy: date | None = None) -> dict[str, Decimal]:
+    """Totales de las últimas 4 semanas para el resumen (vendiste/gastos/ganancia)."""
+    hoy = hoy or hoy_lima()
+    en = [m for m in movimientos if _semana(m, hoy) is not None]
+
+    def suma(cat: Categoria) -> Decimal:
+        return sum((m.monto for m in en if m.categoria is cat), Decimal(0))
+
+    ventas = suma(Categoria.INGRESO)
+    gastos_negocio = suma(Categoria.GASTO_NEGOCIO)
+    return {
+        "ventas": ventas,
+        "gastos_negocio": gastos_negocio,
+        "ganancia": ventas - gastos_negocio,
+        "gastos_personales": suma(Categoria.GASTO_PERSONAL),
+        "deudas": suma(Categoria.DEUDA),
+    }
+
+
 def _cuota_francesa(principal: int) -> Decimal:
     """Cuota mensual, sistema francés, a partir de la TEA efectiva anual."""
     i = (Decimal(1) + TEA) ** (Decimal(1) / Decimal(12)) - Decimal(1)

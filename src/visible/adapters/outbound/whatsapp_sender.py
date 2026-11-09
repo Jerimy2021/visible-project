@@ -67,3 +67,20 @@ class WhatsAppSender:
                 },
             }
         self._enviar({"to": telefono, "type": "interactive", "interactive": interactivo})
+
+    def enviar_link(self, telefono: str, texto: str, etiqueta: str, url: str) -> None:
+        """Mensaje con un botón que abre una URL (interactive cta_url)."""
+        self._enviar(
+            {
+                "to": telefono,
+                "type": "interactive",
+                "interactive": {
+                    "type": "cta_url",
+                    "body": {"text": texto},
+                    "action": {
+                        "name": "cta_url",
+                        "parameters": {"display_text": etiqueta, "url": url},
+                    },
+                },
+            }
+        )

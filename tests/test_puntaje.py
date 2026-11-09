@@ -8,6 +8,7 @@ from visible.domain.puntaje import (
     _cuota_francesa,
     decidir_credito,
     evaluar,
+    totales_semana,
 )
 
 HOY = date(2026, 11, 8)
@@ -103,6 +104,21 @@ def test_movimiento_interno_no_cuenta():
     # el movimiento interno no entra como venta ni gasto
     assert ev.ventas_por_semana[-1] == 100.0
     assert ev.gastos_por_semana[-1] == 0.0
+
+
+def test_totales_semana():
+    movs = [
+        venta(1, "1000"),
+        gasto(1, "400"),
+        gasto(2, "150", Categoria.GASTO_PERSONAL),
+        gasto(3, "100", Categoria.DEUDA),
+    ]
+    t = totales_semana(movs, hoy=HOY)
+    assert t["ventas"] == Decimal("1000")
+    assert t["gastos_negocio"] == Decimal("400")
+    assert t["ganancia"] == Decimal("600")
+    assert t["gastos_personales"] == Decimal("150")
+    assert t["deudas"] == Decimal("100")
 
 
 def test_gasto_personal_fuera_del_margen_pero_baja_libre():

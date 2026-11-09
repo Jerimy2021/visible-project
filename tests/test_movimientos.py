@@ -5,7 +5,7 @@ from decimal import Decimal
 
 from visible.adapters.outbound.extractor_fake import FakeExtractor
 from visible.application.extractor import Contenido, Extraccion, Pregunta
-from visible.application.procesar import MENSAJE_SIN_DATOS, procesar, resumir
+from visible.application.procesar import MENSAJE_SIN_DATOS, procesar, resumir, soles_es
 from visible.domain.movimiento import Categoria, Movimiento
 
 
@@ -50,7 +50,7 @@ def test_procesar_guarda_y_confirma():
     assert len(ext.movimientos) == 5
     assert repo.guardados == [("51999", ext.movimientos)]
     assert mensajero.enviados[0][0] == "51999"
-    assert "Registré 3 ventas" in mensajero.enviados[0][1]
+    assert mensajero.enviados[0][1].startswith("Esto leí")
 
 
 def test_procesar_sin_datos_no_guarda():
@@ -94,10 +94,20 @@ def test_procesar_envia_botones_por_clasificar():
     assert any(i.endswith("gasto_personal") for i in ids)
 
 
-def test_resumir_totales():
+def test_soles_es():
+    assert soles_es(Decimal("1840")) == "S/ 1 840"
+    assert soles_es(Decimal("75")) == "S/ 75"
+    assert soles_es(Decimal("75.50")) == "S/ 75,50"
+
+
+def test_resumir_formato_esto_lei():
     movs = [
-        Movimiento(date.today(), Decimal("100"), "a", Categoria.INGRESO, confianza=0.9),
-        Movimiento(date.today(), Decimal("30"), "b", Categoria.GASTO_NEGOCIO, confianza=0.9),
-        Movimiento(date.today(), Decimal("20"), "c", Categoria.GASTO_PERSONAL, confianza=0.9),
+        Movimiento(date.today(), Decimal("75"), "3 polos", Categoria.INGRESO, confianza=0.9),
+        Movimiento(date.today(), Decimal("30"), "hilo", Categoria.GASTO_NEGOCIO, confianza=0.9),
+        Movimiento(date.today(), Decimal("20"), "menú", Categoria.GASTO_PERSONAL, confianza=0.9),
     ]
-    assert resumir(movs) == "Registré 1 ventas por S/ 100.00 y 2 gastos por S/ 50.00. ¿Está bien?"
+    texto = resumir(movs)
+    assert texto.startswith("Esto leí (")
+    assert "+ S/ 75 · 3 polos · Venta" in texto
+    assert "− S/ 30 · hilo · Negocio" in texto
+    assert "Total: + S/ 75 vendido · − S/ 50 gastado" in texto

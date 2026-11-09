@@ -101,6 +101,7 @@ Resources:
           TABLA_MOVIMIENTOS: !Ref MovimientosTable
           TABLA_IDEMPOTENCIA: !Ref IdempotenciaTable
           TABLA_PERFILES: !Ref PerfilesTable
+          LINK_PANEL: !Sub "https://${WebDistribution.DomainName}"
       Policies:
         - Statement:
             - Sid: LeerParamsMeta

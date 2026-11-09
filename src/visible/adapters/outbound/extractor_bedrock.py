@@ -111,10 +111,14 @@ def _a_movimiento(item: dict, recepcion: date, tipo_entrada: str = "") -> Movimi
         categoria = Categoria(item.get("categoria", "por_clasificar"))
     except ValueError:
         categoria = Categoria.POR_CLASIFICAR
+    concepto = item.get("concepto", "")
+    # Captura de Yape/Plin: concepto genérico, nunca nombres de terceros.
+    if tipo_entrada in ("yape", "plin"):
+        concepto = "Cobro por Yape"
     return Movimiento(
         fecha=fecha,
         monto=monto,
-        concepto=item.get("concepto", ""),
+        concepto=concepto,
         categoria=categoria,
         subcategoria=item.get("subcategoria", ""),
         confianza=float(item.get("confianza", 0.0)),

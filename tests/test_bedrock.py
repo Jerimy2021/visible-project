@@ -101,6 +101,7 @@ def test_parseo_captura_yape():
     assert m.subcategoria == "venta_yape"
     assert m.origen == "yape"
     assert m.tipo_entrada == "yape"
+    assert m.concepto == "Cobro por Yape"  # sin nombres de terceros
 
 
 def test_parseo_origen_yape_por_texto():
