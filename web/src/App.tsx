@@ -28,7 +28,7 @@ export default function App() {
     <>
       <header className="header">
         <span className="marca">Visible para analistas</span>
-        <span className="sub">· Mibanco · simulación</span>
+        <span className="sub">· Conectado con Yape · simulación</span>
         <nav className="tabs">
           <button className={`tab ${tab === "cartera" ? "activo" : ""}`} onClick={() => { setFiltro(null); setTab("cartera"); }}>Cartera</button>
           <button className={`tab ${tab === "cliente" ? "activo" : ""}`} onClick={() => { setFiltro(null); setTab("cliente"); }}>Por cliente</button>
