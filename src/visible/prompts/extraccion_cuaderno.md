@@ -21,6 +21,7 @@ A) CÓMO LEER EL CUADERNO
 - No inventes datos. Si no puedes leer un monto o palabra, déjalo en null y baja la confianza.
 
 B) CÓMO LEER CAPTURAS DE YAPE
+- Si es una captura de Plin u otra billetera: por ahora no se registra. Devuelve "legible": false, "movimientos": [] y la pregunta "Por ahora solo leo capturas de Yape 🙏 ¿Me mandas una captura de Yape o una foto de tu cuaderno?" con opciones [].
 - Una captura de Yape SIEMPRE es legible si se ven montos: nunca la marques como ilegible.
 - Cada cobro RECIBIDO ("te yapeó", "recibiste", monto en verde o con "+") → categoria "ingreso", subcategoria "venta_yape", confianza 0.95 o más (es un dato verificado).
 - Cada pago ENVIADO ("yapeaste", "enviaste", monto con "-") → categoria "por_clasificar", con pregunta si es del negocio o personal.

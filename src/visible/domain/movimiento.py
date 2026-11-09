@@ -35,7 +35,7 @@ class Movimiento:
     categoria: Categoria
     subcategoria: str = ""
     confianza: float = 1.0
-    origen: str = ""  # "yape" o "efectivo"
+    origen: str = ""  # "yape" (captura), "yape_anotado" (declarado) o "efectivo"
     por_cobrar: bool = False
     tipo_entrada: str = ""  # cuaderno | yape | texto
 

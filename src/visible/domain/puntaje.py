@@ -129,10 +129,12 @@ def _clamp(x: Decimal, lo: Decimal = Decimal(0), hi: Decimal = Decimal(1)) -> De
     return max(lo, min(hi, x))
 
 
-def totales_semana(movimientos: list[Movimiento], hoy: date | None = None) -> dict[str, Decimal]:
-    """Totales de las últimas 4 semanas para el resumen (vendiste/gastos/ganancia)."""
+def totales_semana(
+    movimientos: list[Movimiento], hoy: date | None = None, dias: int = DIAS_VENTANA
+) -> dict[str, Decimal]:
+    """Totales de los últimos `dias` días (7 = "Tu semana" en WhatsApp; 28 por defecto)."""
     hoy = hoy or hoy_lima()
-    en = [m for m in movimientos if _semana(m, hoy) is not None]
+    en = [m for m in movimientos if 0 <= (hoy - m.fecha).days < dias]
 
     def suma(cat: Categoria) -> Decimal:
         return sum((m.monto for m in en if m.categoria is cat), Decimal(0))
@@ -303,7 +305,12 @@ def evaluar(movimientos: list[Movimiento], hoy: date | None = None) -> Evaluacio
         gastos_por_semana=[float(_q2(gastos_sem[s])) for s in range(SEMANAS)],
         heatmap=[[float(_q2(c)) for c in fila] for fila in heatmap],
         subpuntajes=subs,
-        decision=decidir_credito(base_semanal),
+        # Sin datos suficientes no se sugiere monto.
+        decision=(
+            decidir_credito(base_semanal)
+            if estado != ESTADO_FALTAN
+            else decidir_credito(Decimal(0))
+        ),
         base_semanal=float(_q2(base_semanal)),
         base_mensual=float(_q2(base_semanal * 4)),
         dias_con_registro=len(dias_con_registro),

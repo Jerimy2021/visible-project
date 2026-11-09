@@ -65,7 +65,9 @@ def test_parseo_extraccion():
     m0 = ext.movimientos[0]
     assert m0.monto == Decimal("75")
     assert m0.categoria is Categoria.INGRESO
-    assert m0.origen == "yape"  # subcategoria venta_yape
+    assert (
+        m0.origen == "yape_anotado"
+    )  # venta_yape escrita en el cuaderno: declarada, no verificada
     assert m0.tipo_entrada == "cuaderno"
     # fecha de 2025 (>60 días) se normaliza a la recepción
     assert ext.movimientos[1].fecha == RECEPCION
@@ -104,6 +106,29 @@ def test_parseo_captura_yape():
     assert m.concepto == "Cobro por Yape"  # sin nombres de terceros
 
 
+def test_parseo_pago_enviado_en_captura_yape():
+    ext = parsear_respuesta(
+        _resp(
+            {
+                "tipo_entrada": "yape",
+                "legible": True,
+                "movimientos": [
+                    {
+                        "fecha": "2026-11-08",
+                        "texto_original": "Yapeaste a Rosa S/ 30",
+                        "concepto": "Yape a Rosa",
+                        "monto": 30,
+                        "categoria": "por_clasificar",
+                        "confianza": 0.95,
+                    }
+                ],
+            }
+        ),
+        RECEPCION,
+    )
+    assert ext.movimientos[0].concepto == "Pago por Yape"
+
+
 def test_parseo_origen_yape_por_texto():
     ext = parsear_respuesta(
         _resp(
@@ -112,7 +137,7 @@ def test_parseo_origen_yape_por_texto():
                 "movimientos": [
                     {
                         "fecha": "2026-11-08",
-                        "texto_original": "casacas cobrado por yape 240",
+                        "texto_original": "casacas pagado por yape 240",
                         "concepto": "2 casacas",
                         "monto": 240,
                         "categoria": "ingreso",
@@ -124,7 +149,7 @@ def test_parseo_origen_yape_por_texto():
         ),
         RECEPCION,
     )
-    assert ext.movimientos[0].origen == "yape"  # "yape" en el texto
+    assert ext.movimientos[0].origen == "yape_anotado"  # "yape" escrito, no verificado
 
 
 def test_sin_tooluse_ilegible():
@@ -142,4 +167,4 @@ def test_system_prompt_inyecta_fecha_y_conceptos(tmp_path, monkeypatch):
     prompt = construir_system_prompt(contenido, recepcion)
     assert "Fecha y hora de recepción: 2026-11-08 09:30 (America/Lima)" in prompt
     assert "pasaje = gasto_negocio" in prompt
-    assert "Yape" in prompt
+    assert "solo leo capturas de Yape" in prompt

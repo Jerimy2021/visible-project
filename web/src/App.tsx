@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getFicha, getPerfiles } from "./api";
+import Emprendedora from "./Emprendedora";
 import { BarsVentasGastos, Heatmap, LineAhorroCuota, Ring } from "./charts";
 import { cuotaFrancesa, pct, soles, TEA } from "./finance";
 import type { Ficha, Movimiento, ResumenPerfil } from "./types";
@@ -12,15 +13,39 @@ function Badge({ estado }: { estado: string }) {
   return <span className={`badge ${cls}`}>{estado}</span>;
 }
 
+/** /?mi=<id> abre la vista de la emprendedora; sin parámetro, el panel del analista. */
 export default function App() {
+  const mi = new URLSearchParams(window.location.search).get("mi");
+  if (mi) return <Emprendedora id={mi} />;
+  return <PanelAnalista />;
+}
+
+/* Filtros reales de la lista "Por cliente". Las alertas de Cartera llevan aquí. */
+type FiltroId = "apta" | "completas" | "sin_oferta" | "proceso" | "caida" | "duplicado";
+const FILTROS: Record<FiltroId, { l: string; vacio: string; ok: (p: ResumenPerfil, ofertas: Set<string>) => boolean }> = {
+  apta: { l: "Apta", vacio: "Ninguna emprendedora apta todavía.", ok: (p) => p.estado === "Apta" },
+  completas: { l: "4 semanas completas", vacio: "Nadie tiene 4 semanas completas todavía.", ok: (p) => (p.semanas_con_datos ?? 0) >= 4 },
+  sin_oferta: { l: "Aptas sin oferta", vacio: "Todas las aptas ya tienen oferta enviada.", ok: (p, o) => p.estado === "Apta" && !o.has(p.id) },
+  proceso: { l: "En proceso", vacio: "Nadie está en proceso.", ok: (p) => p.estado === "En proceso" },
+  caida: { l: "Caída de ventas > 20%", vacio: "Ninguna emprendedora tiene caída de ventas mayor a 20%.", ok: (p) => (p.tendencia_pct ?? 0) <= -20 },
+  duplicado: { l: "Posible duplicado", vacio: "Sin casos: el asistente ya rechaza fotos repetidas al recibirlas.", ok: () => false },
+};
+
+function PanelAnalista() {
   const [tab, setTab] = useState<"cartera" | "cliente">("cliente");
   const [toast, setToast] = useState<string | null>(null);
-  const [filtro, setFiltro] = useState<string | null>(null);
+  const [filtro, setFiltro] = useState<FiltroId | null>(null);
+  // Ofertas enviadas en esta sesión (simulación): cambian el botón y el filtro "sin oferta".
+  const [ofertas, setOfertas] = useState<Set<string>>(new Set());
+  const ofrecer = (id: string) => {
+    setOfertas((s) => new Set(s).add(id));
+    mostrarToast("✅ Oferta enviada por WhatsApp (simulación)");
+  };
   const mostrarToast = (t: string) => {
     setToast(t);
     setTimeout(() => setToast(null), 2600);
   };
-  const irACliente = (f: string | null) => {
+  const irACliente = (f: FiltroId | null) => {
     setFiltro(f);
     setTab("cliente");
   };
@@ -37,7 +62,7 @@ export default function App() {
       <main className="wrap">
         {tab === "cartera"
           ? <Cartera onNavegar={irACliente} />
-          : <PorCliente onToast={mostrarToast} filtro={filtro} onLimpiarFiltro={() => setFiltro(null)} />}
+          : <PorCliente filtro={filtro} ofertas={ofertas} onOfrecer={ofrecer} onLimpiarFiltro={() => setFiltro(null)} />}
       </main>
       {toast && <div className="toast">{toast}</div>}
     </>
@@ -51,15 +76,15 @@ const KPIS_RETO = [
   { l: "Precisión de lectura (IA)", v: "72%" },
   { l: "Cartera potencial a 6 meses", v: "S/ 12.9 M" },
 ];
-const ALERTAS = [
-  { color: "#15803d", n: "19", t: "nuevas con 4 semanas completas", accion: "Ofrecer crédito", filtro: "Apta" },
-  { color: "#b91c1c", n: "7", t: "con caída de ventas > 20%", accion: "Revisar", filtro: null },
-  { color: "#2a4ba8", n: "41", t: "aptas sin oferta enviada", accion: "Enviar oferta", filtro: "Apta" },
-  { color: "#b45309", n: "33", t: "en proceso de registro", accion: "Seguimiento", filtro: "En proceso" },
-  { color: "#6b7280", n: "2", t: "Posible duplicado", accion: "Revisar fotos", filtro: null },
+const ALERTAS: { color: string; n: string; t: string; accion: string; filtro: FiltroId }[] = [
+  { color: "#15803d", n: "19", t: "nuevas con 4 semanas completas", accion: "Ofrecer crédito", filtro: "completas" },
+  { color: "#b91c1c", n: "7", t: "con caída de ventas > 20%", accion: "Revisar", filtro: "caida" },
+  { color: "#2a4ba8", n: "41", t: "aptas sin oferta enviada", accion: "Enviar oferta", filtro: "sin_oferta" },
+  { color: "#b45309", n: "33", t: "en proceso de registro", accion: "Seguimiento", filtro: "proceso" },
+  { color: "#6b7280", n: "2", t: "Posible duplicado", accion: "Revisar fotos", filtro: "duplicado" },
 ];
 
-function Cartera({ onNavegar }: { onNavegar: (f: string | null) => void }) {
+function Cartera({ onNavegar }: { onNavegar: (f: FiltroId | null) => void }) {
   const [sub, setSub] = useState("resumen");
   return (
     <div className="stack">
@@ -131,14 +156,22 @@ function Cartera({ onNavegar }: { onNavegar: (f: string | null) => void }) {
 }
 
 /* ---------- Pantalla 5: Por cliente ---------- */
-function PorCliente({ onToast, filtro, onLimpiarFiltro }: {
-  onToast: (t: string) => void; filtro: string | null; onLimpiarFiltro: () => void;
+function PorCliente({ filtro, ofertas, onOfrecer, onLimpiarFiltro }: {
+  filtro: FiltroId | null; ofertas: Set<string>; onOfrecer: (id: string) => void; onLimpiarFiltro: () => void;
 }) {
   const [perfiles, setPerfiles] = useState<ResumenPerfil[]>([]);
   const [sel, setSel] = useState<string | null>(null);
   const [ficha, setFicha] = useState<Ficha | null>(null);
   const [itab, setItab] = useState("resumen");
-  const visibles = filtro ? perfiles.filter((p) => p.estado === filtro) : perfiles;
+  const visibles = filtro ? perfiles.filter((p) => FILTROS[filtro].ok(p, ofertas)) : perfiles;
+  const idsVisibles = visibles.map((p) => p.id).join(",");
+
+  // Al filtrar, la ficha abierta siempre es de alguien de la lista (o ninguna).
+  useEffect(() => {
+    if (!perfiles.length) return;
+    if (!visibles.length) { setSel(null); setFicha(null); return; }
+    if (!sel || !visibles.some((p) => p.id === sel)) { setSel(visibles[0].id); setItab("resumen"); }
+  }, [filtro, idsVisibles]);
 
   useEffect(() => {
     getPerfiles().then((ps) => {
@@ -166,7 +199,7 @@ function PorCliente({ onToast, filtro, onLimpiarFiltro }: {
           <h3 style={{ margin: 0 }}>Autorizadas</h3>
           {filtro && (
             <button className="itab activo" onClick={onLimpiarFiltro} style={{ fontSize: 12 }}>
-              {filtro} ✕
+              {FILTROS[filtro].l} ✕
             </button>
           )}
         </div>
@@ -180,18 +213,31 @@ function PorCliente({ onToast, filtro, onLimpiarFiltro }: {
             <div style={{ textAlign: "right" }}>
               <div style={{ fontWeight: 800 }}>{p.puntaje ?? "—"}</div>
               <Badge estado={p.estado} />
+              {ofertas.has(p.id) && <div className="muted" style={{ fontSize: 11, marginTop: 3 }}>✓ oferta enviada</div>}
             </div>
           </div>
         ))}
+        {filtro && !visibles.length && <p className="muted">{FILTROS[filtro].vacio}</p>}
       </aside>
 
-      {ficha ? <FichaCliente ficha={ficha} itab={itab} setItab={setItab} onToast={onToast} /> : <div className="card">Cargando…</div>}
+      {!visibles.length && perfiles.length ? (
+        <div className="card">
+          <h3>Sin resultados</h3>
+          <p className="muted">{filtro ? FILTROS[filtro].vacio : "Aún no hay emprendedoras autorizadas."}</p>
+          {filtro && <button className="btn ghost" style={{ width: "auto" }} onClick={onLimpiarFiltro}>Ver todas</button>}
+        </div>
+      ) : ficha && ficha.id === sel ? (
+        <FichaCliente ficha={ficha} itab={itab} setItab={setItab}
+          ofertada={ofertas.has(ficha.id)} onOfrecer={() => onOfrecer(ficha.id)} />
+      ) : (
+        <div className="card">Cargando…</div>
+      )}
     </div>
   );
 }
 
-function FichaCliente({ ficha, itab, setItab, onToast }: {
-  ficha: Ficha; itab: string; setItab: (t: string) => void; onToast: (t: string) => void;
+function FichaCliente({ ficha, itab, setItab, ofertada, onOfrecer }: {
+  ficha: Ficha; itab: string; setItab: (t: string) => void; ofertada: boolean; onOfrecer: () => void;
 }) {
   const ev = ficha.evaluacion;
   const tabs = [
@@ -211,6 +257,7 @@ function FichaCliente({ ficha, itab, setItab, onToast }: {
                 <span className="chip">Sin RUC</span>
                 {ficha.consentimiento && <span className="chip">✓ Consentimiento · {ficha.consentimiento}</span>}
                 <span className="chip">{ficha.telefono_mascara}</span>
+                <a className="chip" href={`?mi=${ficha.id}`} target="_blank" rel="noreferrer">Ver vista de ella ↗</a>
               </div>
             </div>
             <div style={{ textAlign: "center" }}>
@@ -243,7 +290,7 @@ function FichaCliente({ ficha, itab, setItab, onToast }: {
         </div>
       </section>
 
-      <Decision ev={ev} onToast={onToast} onSimular={() => setItab("simulador")} />
+      <Decision ev={ev} ofertada={ofertada} onOfrecer={onOfrecer} onSimular={() => setItab("simulador")} />
     </>
   );
 }
@@ -289,7 +336,7 @@ function TablaMovimientos({ movs }: { movs: Movimiento[] }) {
             <td>{m.fecha}</td>
             <td>{m.concepto}</td>
             <td><span className={`tag ${m.categoria}`}>{m.categoria}</span>{m.por_cobrar && <span className="muted"> · por cobrar</span>}</td>
-            <td>{m.origen === "yape" ? "Yape" : m.origen || "—"}</td>
+            <td>{m.origen === "yape" ? "Yape (captura)" : m.origen === "yape_anotado" ? "Yape (anotado)" : m.origen || "—"}</td>
             <td>{m.confianza == null ? "—" : `${Math.round(Number(m.confianza) * 100)}%`}</td>
             <td>{soles(Number(m.monto))}</td>
             <td>{m.foto_url ? <a href={m.foto_url} target="_blank" rel="noreferrer">ver</a> : "—"}</td>
@@ -341,7 +388,9 @@ function Plan({ ev }: { ev: Ficha["evaluacion"] }) {
   return <ol>{pasos.map((p, i) => <li key={i} style={{ marginBottom: 8 }}>{p}</li>)}</ol>;
 }
 
-function Decision({ ev, onToast, onSimular }: { ev: Ficha["evaluacion"]; onToast: (t: string) => void; onSimular: () => void }) {
+function Decision({ ev, ofertada, onOfrecer, onSimular }: {
+  ev: Ficha["evaluacion"]; ofertada: boolean; onOfrecer: () => void; onSimular: () => void;
+}) {
   const d = ev.decision;
   const verif = ev.coincidencia_yape_pct ?? 0;
   return (
@@ -359,9 +408,13 @@ function Decision({ ev, onToast, onSimular }: { ev: Ficha["evaluacion"]; onToast
           </div>
         </>
       ) : (
-        <p className="muted">Aún sin capacidad de pago suficiente para un monto del catálogo.</p>
+        <p className="muted">{ev.estado === "Faltan datos"
+          ? `Faltan datos: necesita al menos 3 semanas de registros (tiene ${ev.semanas_con_datos}).`
+          : "Aún sin capacidad de pago suficiente para un monto del catálogo."}</p>
       )}
-      <button className="btn primary" onClick={() => onToast("✅ Oferta enviada (simulación)")}>Ofrecer crédito</button>
+      <button className="btn primary" disabled={d.monto <= 0 || ofertada} onClick={onOfrecer}>
+        {ofertada ? "✓ Oferta enviada" : "Ofrecer crédito"}
+      </button>
       <button className="btn ghost" onClick={onSimular}>Simular</button>
     </aside>
   );
