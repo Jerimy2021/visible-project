@@ -2,13 +2,6 @@ AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 Description: Visible - WhatsApp (Meta) -> movimientos -> DynamoDB -> respuesta
 
-Parameters:
-  Extractor:
-    Type: String
-    Default: bedrock
-    AllowedValues: [fake, bedrock]
-    Description: Motor de extracción (fake solo para pruebas)
-
 Globals:
   Function:
     Runtime: python3.12
@@ -98,7 +91,7 @@ Resources:
       MemorySize: 512
       Environment:
         Variables:
-          EXTRACTOR: !Ref Extractor
+          EXTRACTOR: bedrock
           GRAPH_API_VERSION: v25.0
           MODEL_ID: us.anthropic.claude-sonnet-4-6
           MODEL_ID_FALLBACK: us.anthropic.claude-haiku-4-5-20251001-v1:0

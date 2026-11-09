@@ -3,6 +3,7 @@
 Se invoca de forma asíncrona desde el webhook con el MensajeEntrante serializado.
 """
 
+import logging
 import os
 
 from visible.adapters.outbound.dynamo_idempotencia import DynamoIdempotencia
@@ -16,12 +17,18 @@ from visible.application.extractor import Contenido, Extractor
 from visible.application.procesar import procesar
 from visible.domain.mensaje import MensajeEntrante, desde_dict
 
+logging.getLogger().setLevel(logging.INFO)
+logger = logging.getLogger("visible.procesar")
+
 
 def _crear_extractor() -> Extractor:
     if os.environ.get("EXTRACTOR", "fake") == "bedrock":
         from visible.adapters.outbound.extractor_bedrock import BedrockExtractor
 
-        return BedrockExtractor()
+        ext = BedrockExtractor()
+        logger.info("extractor=bedrock modelo=%s respaldo=%s", ext.modelo, ext.respaldo)
+        return ext
+    logger.info("extractor=fake")
     return FakeExtractor()
 
 
