@@ -47,7 +47,7 @@ _PREGUNTA = {
 TOOL_SCHEMA = {
     "type": "object",
     "properties": {
-        "tipo_entrada": {"type": "string", "enum": ["cuaderno", "yape", "plin", "texto"]},
+        "tipo_entrada": {"type": "string", "enum": ["cuaderno", "yape", "texto"]},
         "fecha_foto": {"type": "string"},
         "legible": {"type": "boolean"},
         "movimientos": {"type": "array", "items": _MOVIMIENTO},
@@ -93,7 +93,7 @@ def _tool_input(respuesta: dict) -> dict | None:
 
 def _origen(item: dict) -> str:
     texto = f"{item.get('texto_original', '')} {item.get('concepto', '')}".lower()
-    if item.get("subcategoria") == "venta_yape" or "yape" in texto or "plin" in texto:
+    if item.get("subcategoria") == "venta_yape" or "yape" in texto:
         return "yape"
     return "efectivo"
 
@@ -112,8 +112,8 @@ def _a_movimiento(item: dict, recepcion: date, tipo_entrada: str = "") -> Movimi
     except ValueError:
         categoria = Categoria.POR_CLASIFICAR
     concepto = item.get("concepto", "")
-    # Captura de Yape/Plin: concepto genérico, nunca nombres de terceros.
-    if tipo_entrada in ("yape", "plin"):
+    # Captura de Yape: concepto genérico, nunca nombres de terceros.
+    if tipo_entrada == "yape":
         concepto = "Cobro por Yape"
     return Movimiento(
         fecha=fecha,

@@ -112,7 +112,7 @@ def test_parseo_origen_yape_por_texto():
                 "movimientos": [
                     {
                         "fecha": "2026-11-08",
-                        "texto_original": "casacas pagado por plin 240",
+                        "texto_original": "casacas cobrado por yape 240",
                         "concepto": "2 casacas",
                         "monto": 240,
                         "categoria": "ingreso",
@@ -124,7 +124,7 @@ def test_parseo_origen_yape_por_texto():
         ),
         RECEPCION,
     )
-    assert ext.movimientos[0].origen == "yape"  # "plin" en el texto
+    assert ext.movimientos[0].origen == "yape"  # "yape" en el texto
 
 
 def test_sin_tooluse_ilegible():
@@ -142,4 +142,4 @@ def test_system_prompt_inyecta_fecha_y_conceptos(tmp_path, monkeypatch):
     prompt = construir_system_prompt(contenido, recepcion)
     assert "Fecha y hora de recepción: 2026-11-08 09:30 (America/Lima)" in prompt
     assert "pasaje = gasto_negocio" in prompt
-    assert "Plin" in prompt
+    assert "Yape" in prompt
