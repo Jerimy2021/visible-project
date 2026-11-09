@@ -92,7 +92,7 @@ def _tool_input(respuesta: dict) -> dict | None:
 
 
 def _origen(item: dict, tipo_entrada: str = "") -> str:
-    """"yape" solo si viene de una captura de Yape (verificable).
+    """ "yape" solo si viene de una captura de Yape (verificable).
 
     Si el cuaderno o el texto dicen "yape", es una venta por Yape declarada:
     "yape_anotado" (no cuenta como verificada en el puntaje).

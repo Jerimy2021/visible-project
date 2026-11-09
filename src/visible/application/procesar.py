@@ -4,12 +4,14 @@ Depende solo de puertos (Extractor, RepositorioMovimientos, Mensajero) y del
 dominio. Sin AWS: testeable con dobles en memoria.
 """
 
+import uuid
 from datetime import date
 from decimal import Decimal
 
 from visible.application.extractor import Contenido, Extraccion, Extractor
 from visible.application.mensajero import Mensajero
 from visible.application.repositorio import RepositorioMovimientos
+from visible.domain.categorias import BOTONES_CATEGORIA, subcategorias
 from visible.domain.movimiento import Categoria, Movimiento, categoria_desde_opcion
 
 MENSAJE_SIN_DATOS = (
@@ -61,6 +63,35 @@ def resumir(movimientos: list[Movimiento]) -> str:
     return f"Esto leí ({_dia_es(fecha)}):\n" + "\n".join(lineas) + "\n" + total
 
 
+def botones_confirmar(lote: str) -> list[tuple[str, str]]:
+    """Botones tras el resumen: confirmar o corregir todo el lote recién guardado."""
+    return [(f"conf|ok|{lote}", "✓ Todo correcto"), (f"conf|fix|{lote}", "Corregir")]
+
+
+def opciones_categoria(sk: str, opciones_modelo: tuple[str, ...] = ()) -> list[tuple[str, str]]:
+    """Paso 1 de clasificar: hasta 3 botones de categoría.
+
+    Usa las opciones que propuso la IA si se pueden mapear a una categoría;
+    si no, Negocio / Personal / Deuda.
+    """
+    vistas: set[Categoria] = set()
+    opciones: list[tuple[str, str]] = []
+    for op in opciones_modelo:
+        cat = categoria_desde_opcion(op)
+        if cat is Categoria.POR_CLASIFICAR or cat in vistas:
+            continue
+        vistas.add(cat)
+        opciones.append((f"clasif|{sk}|{cat.value}", op[:20]))
+    if not opciones:
+        opciones = [(f"clasif|{sk}|{c.value}", etiqueta) for c, etiqueta in BOTONES_CATEGORIA]
+    return opciones[:3]
+
+
+def opciones_subcategoria(sk: str, categoria: str) -> list[tuple[str, str]]:
+    """Paso 2 de clasificar: lista con los tipos de esa categoría (vacía si no tiene)."""
+    return [(f"sub|{sk}|{categoria}|{s}", etiqueta) for s, etiqueta in subcategorias(categoria)]
+
+
 def _preguntar(
     telefono: str,
     extraccion: Extraccion,
@@ -80,10 +111,9 @@ def _preguntar(
             sk = sks[0]
         else:
             continue
-        opciones = [
-            (f"clasif|{sk}|{categoria_desde_opcion(op)}", op[:20]) for op in pregunta.opciones[:10]
-        ]
-        mensajero.enviar_opciones(telefono, pregunta.pregunta, opciones)
+        mensajero.enviar_opciones(
+            telefono, pregunta.pregunta, opciones_categoria(sk, pregunta.opciones)
+        )
 
 
 def procesar(
@@ -93,8 +123,9 @@ def procesar(
     repositorio: RepositorioMovimientos,
     mensajero: Mensajero,
     evidencia_key: str = "",
+    lote: str | None = None,
 ) -> Extraccion:
-    """Extrae, persiste y confirma. Devuelve la Extraccion."""
+    """Extrae, persiste y pide confirmar (Todo correcto / Corregir). Devuelve la Extraccion."""
     extraccion = extractor.extraer(contenido)
 
     if not extraccion.legible:
@@ -106,7 +137,8 @@ def procesar(
         mensajero.enviar_texto(telefono, MENSAJE_SIN_DATOS)
         return extraccion
 
-    sks = repositorio.guardar(telefono, extraccion.movimientos, evidencia_key)
-    mensajero.enviar_texto(telefono, resumir(extraccion.movimientos))
+    lote = lote or uuid.uuid4().hex[:10]
+    sks = repositorio.guardar(telefono, extraccion.movimientos, evidencia_key, lote=lote)
+    mensajero.enviar_opciones(telefono, resumir(extraccion.movimientos), botones_confirmar(lote))
     _preguntar(telefono, extraccion, sks or [], mensajero)
     return extraccion

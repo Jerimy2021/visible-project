@@ -13,8 +13,9 @@ class RepoMemoria:
     def __init__(self):
         self.guardados: list[tuple[str, list[Movimiento]]] = []
 
-    def guardar(self, telefono, movimientos, evidencia_key=""):
+    def guardar(self, telefono, movimientos, evidencia_key="", lote=""):
         self.guardados.append((telefono, movimientos))
+        self.lote = lote
         return [f"{m.fecha.isoformat()}#{i}" for i, m in enumerate(movimientos)]
 
 
@@ -49,8 +50,10 @@ def test_procesar_guarda_y_confirma():
     ext = procesar("51999", Contenido(texto="x"), FakeExtractor(), repo, mensajero)
     assert len(ext.movimientos) == 5
     assert repo.guardados == [("51999", ext.movimientos)]
-    assert mensajero.enviados[0][0] == "51999"
-    assert mensajero.enviados[0][1].startswith("Esto leí")
+    # El resumen va con botones para confirmar o corregir el lote guardado.
+    tel, texto, opciones = mensajero.opciones[0]
+    assert tel == "51999" and texto.startswith("Esto leí")
+    assert [o[0] for o in opciones] == [f"conf|ok|{repo.lote}", f"conf|fix|{repo.lote}"]
 
 
 def test_procesar_sin_datos_no_guarda():
@@ -86,8 +89,8 @@ def test_procesar_envia_botones_por_clasificar():
         ],
     )
     procesar("51999", Contenido(imagen=b"x"), ExtractorFijo(extraccion), repo, mensajero)
-    assert len(mensajero.opciones) == 1
-    _, texto, opciones = mensajero.opciones[0]
+    assert len(mensajero.opciones) == 2  # resumen con confirmar + pregunta
+    _, texto, opciones = mensajero.opciones[1]
     assert texto.startswith("¿El pasaje")
     ids = [o[0] for o in opciones]
     assert any(i.endswith("gasto_negocio") for i in ids)

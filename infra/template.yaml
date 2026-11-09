@@ -87,7 +87,8 @@ Resources:
     Properties:
       FunctionName: !Sub "${AWS::StackName}-procesar"
       Handler: visible.adapters.inbound.procesar.handler
-      Timeout: 60
+      # 120 s: una nota de voz se transcribe en ~10-30 s (Transcribe batch) + Bedrock.
+      Timeout: 120
       MemorySize: 512
       Environment:
         Variables:
@@ -102,6 +103,10 @@ Resources:
           TABLA_IDEMPOTENCIA: !Ref IdempotenciaTable
           TABLA_PERFILES: !Ref PerfilesTable
           LINK_PANEL: !Sub "https://${WebDistribution.DomainName}"
+          # Notas de voz con Amazon Transcribe. "off" vuelve a responder
+          # "Todavía no puedo escuchar audios".
+          TRANSCRIBIR: "on"
+          TRANSCRIBE_IDIOMA: es-US
       Policies:
         - Statement:
             - Sid: LeerParamsMeta
@@ -117,14 +122,32 @@ Resources:
                   kms:ViaService: !Sub "ssm.${AWS::Region}.amazonaws.com"
             - Sid: GuardarEvidencias
               Effect: Allow
-              Action: s3:PutObject
+              Action:
+                - s3:PutObject
+                - s3:GetObject          # leer la transcripción y el audio (Transcribe)
+                - s3:DeleteObject       # "borrar mis datos"
+                - s3:DeleteObjectVersion
               Resource: !Sub "${EvidenciasBucket.Arn}/*"
+            - Sid: ListarEvidencias
+              Effect: Allow
+              Action:
+                - s3:ListBucket
+                - s3:ListBucketVersions
+              Resource: !GetAtt EvidenciasBucket.Arn
+            - Sid: TranscribirAudios
+              Effect: Allow
+              Action:
+                - transcribe:StartTranscriptionJob
+                - transcribe:GetTranscriptionJob
+              Resource: "*"
             - Sid: EscribirMovimientos
               Effect: Allow
               Action:
                 - dynamodb:PutItem
                 - dynamodb:BatchWriteItem
                 - dynamodb:UpdateItem
+                - dynamodb:Query        # resumen, "¿me alcanza?", corregir, mis datos
+                - dynamodb:DeleteItem
               Resource: !GetAtt MovimientosTable.Arn
             - Sid: ReservarIdempotencia
               Effect: Allow
@@ -132,6 +155,8 @@ Resources:
                 - dynamodb:PutItem
                 - dynamodb:DeleteItem
                 - dynamodb:GetItem
+                - dynamodb:Scan           # "borrar mis datos": huellas de sus archivos
+                - dynamodb:BatchWriteItem
               Resource: !GetAtt IdempotenciaTable.Arn
             - Sid: EscribirPerfil
               Effect: Allow
@@ -139,6 +164,7 @@ Resources:
                 - dynamodb:PutItem
                 - dynamodb:UpdateItem
                 - dynamodb:GetItem
+                - dynamodb:DeleteItem     # "borrar mis datos"
               Resource: !GetAtt PerfilesTable.Arn
             - Sid: InvocarBedrock
               Effect: Allow

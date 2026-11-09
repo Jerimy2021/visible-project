@@ -57,6 +57,21 @@ class DynamoPerfiles:
             ExpressionAttributeValues={":e": "rechazado"},
         )
 
+    def esperar(self, telefono: str, que: str) -> None:
+        """Marca qué respuesta esperamos de ella (p. ej. "alcanza" → un monto). '' = nada."""
+        self._tabla().update_item(
+            Key={"telefono": telefono},
+            UpdateExpression="SET esperando = :e",
+            ExpressionAttributeValues={":e": que},
+        )
+
+    def esperando(self, telefono: str) -> str:
+        return (self.obtener(telefono) or {}).get("esperando", "")
+
+    def borrar(self, telefono: str) -> None:
+        """Elimina el perfil (consentimiento y conceptos aprendidos)."""
+        self._tabla().delete_item(Key={"telefono": telefono})
+
     def guardar(self, perfil: dict) -> None:
         self._tabla().put_item(Item=perfil)
 

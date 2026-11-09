@@ -36,7 +36,11 @@ class DynamoRepositorioMovimientos:
         return boto3.resource("dynamodb").Table(self.tabla_nombre)
 
     def guardar(
-        self, telefono: str, movimientos: list[Movimiento], evidencia_key: str = ""
+        self,
+        telefono: str,
+        movimientos: list[Movimiento],
+        evidencia_key: str = "",
+        lote: str = "",
     ) -> list[str]:
         creado = datetime.now(UTC).isoformat()
         sks: list[str] = []
@@ -60,18 +64,71 @@ class DynamoRepositorioMovimientos:
                 }
                 if evidencia_key:
                     item["evidencia_key"] = evidencia_key
+                if lote:
+                    item["lote"] = lote
                 lote.put_item(Item=item)
         return sks
 
-    def actualizar_categoria(self, telefono: str, sk: str, categoria: str) -> str:
-        """Cambia la categoría de un movimiento y devuelve su concepto."""
-        resp = self._tabla().update_item(
-            Key={"telefono": telefono, "sk": sk},
-            UpdateExpression="SET categoria = :c",
-            ExpressionAttributeValues={":c": categoria},
-            ReturnValues="ALL_NEW",
-        )
+    def actualizar_categoria(
+        self, telefono: str, sk: str, categoria: str, subcategoria: str | None = None
+    ) -> str | None:
+        """Cambia la categoría (y opcionalmente la subcategoría) y devuelve el concepto.
+
+        Devuelve None si el movimiento ya no existe (p. ej. lo borró con "Corregir"):
+        así un botón viejo nunca crea un registro vacío.
+        """
+        from botocore.exceptions import ClientError
+
+        expr, valores = "SET categoria = :c", {":c": categoria}
+        if subcategoria is not None:
+            expr += ", subcategoria = :s"
+            valores[":s"] = subcategoria
+        try:
+            resp = self._tabla().update_item(
+                Key={"telefono": telefono, "sk": sk},
+                UpdateExpression=expr,
+                ExpressionAttributeValues=valores,
+                ConditionExpression="attribute_exists(sk)",
+                ReturnValues="ALL_NEW",
+            )
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+                return None
+            raise
         return resp.get("Attributes", {}).get("concepto", "")
+
+    def _todos(self, telefono: str) -> list[dict]:
+        from boto3.dynamodb.conditions import Key
+
+        items, kwargs = [], {"KeyConditionExpression": Key("telefono").eq(telefono)}
+        while True:
+            resp = self._tabla().query(**kwargs)
+            items += resp.get("Items", [])
+            if "LastEvaluatedKey" not in resp:
+                return items
+            kwargs["ExclusiveStartKey"] = resp["LastEvaluatedKey"]
+
+    def _borrar(self, items: list[dict]) -> int:
+        with self._tabla().batch_writer() as lote:
+            for it in items:
+                lote.delete_item(Key={"telefono": it["telefono"], "sk": it["sk"]})
+        return len(items)
+
+    def borrar_lote(self, telefono: str, lote: str) -> int:
+        """Borra lo guardado de un mismo mensaje ("Corregir"). Devuelve cuántos borró."""
+        if not lote:
+            return 0
+        return self._borrar([it for it in self._todos(telefono) if it.get("lote") == lote])
+
+    def borrar_todo(self, telefono: str) -> int:
+        """Borra todos los movimientos de la usuaria ("borrar mis datos")."""
+        return self._borrar(self._todos(telefono))
+
+    def contar(self, telefono: str) -> tuple[int, str]:
+        """(cantidad de movimientos, fecha del primero) para "mis datos"."""
+        items = self._todos(telefono)
+        primero = min((it.get("fecha", "") for it in items), default="")
+        return len(items), primero
 
     def leer_ventana(self, telefono: str, hoy: date, dias: int = 28) -> list[Movimiento]:
         """Movimientos de los últimos `dias` días (para el motor de puntaje)."""

@@ -51,9 +51,7 @@ def totales(movs: list[Movimiento]) -> dict[str, float]:
         "cuotas_deuda": _f(cuotas),
         "ganancia": _f(ganancia),
         "ahorro": _f(ganancia - personal - cuotas),
-        "por_cobrar": _f(
-            suma(lambda m: m.categoria is Categoria.INGRESO and m.por_cobrar)
-        ),
+        "por_cobrar": _f(suma(lambda m: m.categoria is Categoria.INGRESO and m.por_cobrar)),
         "por_clasificar": _f(suma(lambda m: m.categoria is Categoria.POR_CLASIFICAR)),
     }
 

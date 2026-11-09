@@ -65,7 +65,9 @@ def test_parseo_extraccion():
     m0 = ext.movimientos[0]
     assert m0.monto == Decimal("75")
     assert m0.categoria is Categoria.INGRESO
-    assert m0.origen == "yape_anotado"  # venta_yape escrita en el cuaderno: declarada, no verificada
+    assert (
+        m0.origen == "yape_anotado"
+    )  # venta_yape escrita en el cuaderno: declarada, no verificada
     assert m0.tipo_entrada == "cuaderno"
     # fecha de 2025 (>60 días) se normaliza a la recepción
     assert ext.movimientos[1].fecha == RECEPCION
