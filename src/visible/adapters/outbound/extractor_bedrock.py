@@ -47,7 +47,7 @@ _PREGUNTA = {
 TOOL_SCHEMA = {
     "type": "object",
     "properties": {
-        "tipo_entrada": {"type": "string", "enum": ["cuaderno", "yape", "plin", "texto"]},
+        "tipo_entrada": {"type": "string", "enum": ["cuaderno", "yape", "texto"]},
         "fecha_foto": {"type": "string"},
         "legible": {"type": "boolean"},
         "movimientos": {"type": "array", "items": _MOVIMIENTO},
@@ -91,10 +91,17 @@ def _tool_input(respuesta: dict) -> dict | None:
     return None
 
 
-def _origen(item: dict) -> str:
-    texto = f"{item.get('texto_original', '')} {item.get('concepto', '')}".lower()
-    if item.get("subcategoria") == "venta_yape" or "yape" in texto or "plin" in texto:
+def _origen(item: dict, tipo_entrada: str = "") -> str:
+    """"yape" solo si viene de una captura de Yape (verificable).
+
+    Si el cuaderno o el texto dicen "yape", es una venta por Yape declarada:
+    "yape_anotado" (no cuenta como verificada en el puntaje).
+    """
+    if tipo_entrada == "yape":
         return "yape"
+    texto = f"{item.get('texto_original', '')} {item.get('concepto', '')}".lower()
+    if item.get("subcategoria") == "venta_yape" or "yape" in texto:
+        return "yape_anotado"
     return "efectivo"
 
 
@@ -112,9 +119,9 @@ def _a_movimiento(item: dict, recepcion: date, tipo_entrada: str = "") -> Movimi
     except ValueError:
         categoria = Categoria.POR_CLASIFICAR
     concepto = item.get("concepto", "")
-    # Captura de Yape/Plin: concepto genérico, nunca nombres de terceros.
-    if tipo_entrada in ("yape", "plin"):
-        concepto = "Cobro por Yape"
+    # Captura de Yape: concepto genérico, nunca nombres de terceros.
+    if tipo_entrada == "yape":
+        concepto = "Cobro por Yape" if categoria is Categoria.INGRESO else "Pago por Yape"
     return Movimiento(
         fecha=fecha,
         monto=monto,
@@ -122,7 +129,7 @@ def _a_movimiento(item: dict, recepcion: date, tipo_entrada: str = "") -> Movimi
         categoria=categoria,
         subcategoria=item.get("subcategoria", ""),
         confianza=float(item.get("confianza", 0.0)),
-        origen=_origen(item),
+        origen=_origen(item, tipo_entrada),
         por_cobrar=bool(item.get("por_cobrar", False)),
         tipo_entrada=tipo_entrada,
     )

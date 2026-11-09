@@ -98,7 +98,7 @@ def _consentir(event: dict) -> dict:
 
 def _resumen_semana(telefono: str) -> dict:
     hoy = hoy_lima()
-    t = totales_semana(DynamoRepositorioMovimientos().leer_ventana(telefono, hoy), hoy)
+    t = totales_semana(DynamoRepositorioMovimientos().leer_ventana(telefono, hoy), hoy, dias=7)
     if not any(t[k] for k in ("ventas", "gastos_negocio", "gastos_personales")):
         WhatsAppSender().enviar_texto(telefono, MENSAJE_SIN_SEMANA)
         return {"estado": "resumen_vacio"}

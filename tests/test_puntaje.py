@@ -129,3 +129,16 @@ def test_gasto_personal_fuera_del_margen_pero_baja_libre():
     # El margen (negocio) no cambia; la base de crédito sí baja con gasto personal.
     assert con_personal.subpuntajes["margen"] == sin_personal.subpuntajes["margen"]
     assert con_personal.decision.monto <= sin_personal.decision.monto
+
+
+def test_faltan_datos_no_sugiere_credito():
+    movs = [venta(0, "3000"), venta(1, "3000")]
+    ev = evaluar(movs, hoy=HOY)
+    assert ev.estado == "Faltan datos"
+    assert ev.decision.monto == 0
+
+
+def test_totales_ultimos_7_dias():
+    movs = [venta(0, "100"), venta(10, "500")]
+    assert totales_semana(movs, hoy=HOY, dias=7)["ventas"] == Decimal("100")
+    assert totales_semana(movs, hoy=HOY)["ventas"] == Decimal("600")

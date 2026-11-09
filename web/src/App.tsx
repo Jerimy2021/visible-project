@@ -289,7 +289,7 @@ function TablaMovimientos({ movs }: { movs: Movimiento[] }) {
             <td>{m.fecha}</td>
             <td>{m.concepto}</td>
             <td><span className={`tag ${m.categoria}`}>{m.categoria}</span>{m.por_cobrar && <span className="muted"> · por cobrar</span>}</td>
-            <td>{m.origen === "yape" ? "Yape/Plin" : m.origen || "—"}</td>
+            <td>{m.origen === "yape" ? "Yape (captura)" : m.origen === "yape_anotado" ? "Yape (anotado)" : m.origen || "—"}</td>
             <td>{m.confianza == null ? "—" : `${Math.round(Number(m.confianza) * 100)}%`}</td>
             <td>{soles(Number(m.monto))}</td>
             <td>{m.foto_url ? <a href={m.foto_url} target="_blank" rel="noreferrer">ver</a> : "—"}</td>
@@ -323,7 +323,7 @@ function Confiabilidad({ ev }: { ev: Ficha["evaluacion"] }) {
   return (
     <div className="stack">
       <p>Semanas con registro: <strong>{ev.semanas_con_datos} / 4</strong></p>
-      <p>Ventas verificadas por Yape/Plin: <strong>{ev.coincidencia_yape_pct == null ? "—" : pct(ev.coincidencia_yape_pct)}</strong></p>
+      <p>Ventas verificadas por Yape: <strong>{ev.coincidencia_yape_pct == null ? "—" : pct(ev.coincidencia_yape_pct)}</strong></p>
       <p>Variación de ventas (CV): <strong>{pct(ev.coef_variacion_pct)}</strong> → {ev.estabilidad}</p>
       <div className="alert">
         <span className="dot" style={{ background: "#2a4ba8" }} />
@@ -337,7 +337,7 @@ function Confiabilidad({ ev }: { ev: Ficha["evaluacion"] }) {
 function Plan({ ev }: { ev: Ficha["evaluacion"] }) {
   const pasos = ev.estado === "Apta"
     ? ["Ofrecer el monto sugerido con plazo 6 meses.", "Acompañar el primer repago.", "Subir de monto al cumplir 3 cuotas."]
-    : ["Registrar 4 semanas completas de ventas.", "Priorizar cobros por Yape/Plin (verificable).", "Separar gasto del negocio del gasto de casa."];
+    : ["Registrar 4 semanas completas de ventas.", "Priorizar cobros por Yape (verificable).", "Separar gasto del negocio del gasto de casa."];
   return <ol>{pasos.map((p, i) => <li key={i} style={{ marginBottom: 8 }}>{p}</li>)}</ol>;
 }
 
@@ -359,9 +359,11 @@ function Decision({ ev, onToast, onSimular }: { ev: Ficha["evaluacion"]; onToast
           </div>
         </>
       ) : (
-        <p className="muted">Aún sin capacidad de pago suficiente para un monto del catálogo.</p>
+        <p className="muted">{ev.estado === "Faltan datos"
+          ? `Faltan datos: necesita al menos 3 semanas de registros (tiene ${ev.semanas_con_datos}).`
+          : "Aún sin capacidad de pago suficiente para un monto del catálogo."}</p>
       )}
-      <button className="btn primary" onClick={() => onToast("✅ Oferta enviada (simulación)")}>Ofrecer crédito</button>
+      <button className="btn primary" disabled={d.monto <= 0} onClick={() => onToast("✅ Oferta enviada (simulación)")}>Ofrecer crédito</button>
       <button className="btn ghost" onClick={onSimular}>Simular</button>
     </aside>
   );

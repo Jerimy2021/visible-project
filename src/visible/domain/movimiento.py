@@ -35,9 +35,9 @@ class Movimiento:
     categoria: Categoria
     subcategoria: str = ""
     confianza: float = 1.0
-    origen: str = ""  # "yape" (incluye plin) o "efectivo"
+    origen: str = ""  # "yape" (captura), "yape_anotado" (declarado) o "efectivo"
     por_cobrar: bool = False
-    tipo_entrada: str = ""  # cuaderno | yape | plin | texto
+    tipo_entrada: str = ""  # cuaderno | yape | texto
 
     @property
     def es_ingreso(self) -> bool:
