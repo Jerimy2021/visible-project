@@ -86,6 +86,9 @@ class Evaluacion:
     heatmap: list[list[float]]
     subpuntajes: dict[str, float]
     decision: Decision
+    base_semanal: float
+    base_mensual: float
+    dias_con_registro: int
     pesos: dict[str, int] = field(default_factory=lambda: dict(PESOS))
 
     def to_dict(self) -> dict:
@@ -105,6 +108,9 @@ class Evaluacion:
             "subpuntajes": self.subpuntajes,
             "pesos": self.pesos,
             "decision": self.decision.to_dict(),
+            "base_semanal": self.base_semanal,
+            "base_mensual": self.base_mensual,
+            "dias_con_registro": self.dias_con_registro,
         }
 
 
@@ -279,4 +285,7 @@ def evaluar(movimientos: list[Movimiento], hoy: date | None = None) -> Evaluacio
         heatmap=[[float(_q2(c)) for c in fila] for fila in heatmap],
         subpuntajes=subs,
         decision=decidir_credito(base_semanal),
+        base_semanal=float(_q2(base_semanal)),
+        base_mensual=float(_q2(base_semanal * 4)),
+        dias_con_registro=len(dias_con_registro),
     )

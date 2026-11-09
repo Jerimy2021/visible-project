@@ -1,10 +1,13 @@
 """API de solo lectura para el panel del analista (HttpApi).
 
-GET /perfiles                 -> lista con puntaje y estado.
-GET /perfiles/{telefono}      -> ficha completa (indicadores, series, decisión,
-                                 últimos 20 movimientos con URL prefirmada a la foto).
+GET /perfiles            -> lista con puntaje, estado, id opaco y teléfono enmascarado.
+GET /perfiles/{id}       -> ficha completa (indicadores, series, decisión, últimos 20
+                            movimientos con URL prefirmada a la foto).
+
+Nunca expone el número de teléfono completo: usa un id opaco para la ruta.
 """
 
+import hashlib
 import json
 import os
 from decimal import Decimal
@@ -22,6 +25,14 @@ from visible.domain.puntaje import (
 URL_TTL = 600  # 10 min
 CORS = os.environ.get("CORS_ORIGIN", "*")
 ORDEN_ESTADO = {ESTADO_APTA: 0, ESTADO_PROCESO: 1, ESTADO_FALTAN: 2}
+
+
+def _id_opaco(telefono: str) -> str:
+    return hashlib.sha256(f"visible:{telefono}".encode()).hexdigest()[:16]
+
+
+def _mascara(telefono: str) -> str:
+    return f"+51 9•• ••• {telefono[-3:]}"
 
 
 def _json(estado: int, cuerpo) -> dict:
@@ -57,7 +68,8 @@ def _resumen_perfil(perfil: dict, movs_repo: DynamoRepositorioMovimientos) -> di
     hoy = hoy_lima()
     ev = evaluar(movs_repo.leer_ventana(telefono, hoy), hoy=hoy)
     return {
-        "telefono": telefono,
+        "id": _id_opaco(telefono),
+        "telefono_mascara": _mascara(telefono),
         "nombre": perfil.get("nombre", ""),
         "rubro": perfil.get("rubro", ""),
         "zona": perfil.get("zona", ""),
@@ -71,22 +83,23 @@ def _ficha(perfil: dict, movs_repo: DynamoRepositorioMovimientos, bucket: str) -
     telefono = perfil["telefono"]
     hoy = hoy_lima()
     ev = evaluar(movs_repo.leer_ventana(telefono, hoy), hoy=hoy)
-    ultimos = []
-    for it in movs_repo.ultimos(telefono, 20):
-        ultimos.append(
-            {
-                "fecha": it.get("fecha"),
-                "monto": it.get("monto"),
-                "concepto": it.get("concepto", ""),
-                "categoria": it.get("categoria") or it.get("tipo"),
-                "subcategoria": it.get("subcategoria", ""),
-                "por_cobrar": bool(it.get("por_cobrar", False)),
-                "origen": it.get("origen", ""),
-                "foto_url": _presign(bucket, it.get("evidencia_key", "")),
-            }
-        )
+    ultimos = [
+        {
+            "fecha": it.get("fecha"),
+            "monto": it.get("monto"),
+            "concepto": it.get("concepto", ""),
+            "categoria": it.get("categoria") or it.get("tipo"),
+            "subcategoria": it.get("subcategoria", ""),
+            "por_cobrar": bool(it.get("por_cobrar", False)),
+            "origen": it.get("origen", ""),
+            "confianza": it.get("confianza"),
+            "foto_url": _presign(bucket, it.get("evidencia_key", "")),
+        }
+        for it in movs_repo.ultimos(telefono, 20)
+    ]
     return {
-        "telefono": telefono,
+        "id": _id_opaco(telefono),
+        "telefono_mascara": _mascara(telefono),
         "nombre": perfil.get("nombre", ""),
         "rubro": perfil.get("rubro", ""),
         "zona": perfil.get("zona", ""),
@@ -104,15 +117,15 @@ def handler(event: dict, context: object) -> dict:
     perfiles_repo = DynamoPerfiles()
     movs_repo = DynamoRepositorioMovimientos()
     bucket = os.environ["BUCKET_EVIDENCIAS"]
-    telefono = (event.get("pathParameters") or {}).get("telefono")
+    id_perfil = (event.get("pathParameters") or {}).get("id")
+    perfiles = perfiles_repo.listar()
 
-    if telefono:
-        perfil = perfiles_repo.obtener(telefono)
+    if id_perfil:
+        perfil = next((p for p in perfiles if _id_opaco(p["telefono"]) == id_perfil), None)
         if not perfil:
             return _json(404, {"error": "perfil no encontrado"})
         return _json(200, _ficha(perfil, movs_repo, bucket))
 
-    perfiles = [_resumen_perfil(p, movs_repo) for p in perfiles_repo.listar()]
-    # Apta primero, luego En proceso, y Faltan datos al final; desempata por puntaje.
-    perfiles.sort(key=lambda p: (ORDEN_ESTADO.get(p["estado"], 9), -(p["puntaje"] or 0)))
-    return _json(200, {"perfiles": perfiles})
+    resumen = [_resumen_perfil(p, movs_repo) for p in perfiles]
+    resumen.sort(key=lambda p: (ORDEN_ESTADO.get(p["estado"], 9), -(p["puntaje"] or 0)))
+    return _json(200, {"perfiles": resumen})

@@ -22,6 +22,7 @@ logging.getLogger().setLevel(logging.INFO)
 logger = logging.getLogger("visible.procesar")
 
 MENSAJE_CLASIFICADO = "✓ Guardado. La próxima vez lo clasifico solo."
+MENSAJE_ACK = "📷 Recibí tu foto, la estoy leyendo…"
 
 
 def _crear_extractor() -> Extractor:
@@ -73,6 +74,9 @@ def handler(event: dict, context: object) -> dict:
             return _clasificar(event)
 
         mensaje = desde_dict(event)
+        # Acuse instantáneo antes de descargar/leer (Bedrock tarda).
+        if mensaje.medios:
+            WhatsAppSender().enviar_texto(mensaje.telefono, MENSAJE_ACK)
         perfiles = DynamoPerfiles()
         perfiles.crear_si_no_existe(mensaje.telefono)
         conceptos = tuple(perfiles.conceptos(mensaje.telefono))

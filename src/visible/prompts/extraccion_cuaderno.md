@@ -77,3 +77,5 @@ FORMATO DE SALIDA (JSON)
 }
 
 En "alertas" anota, si aplica: "foto_borrosa", "pagina_repetida", "montos_redondos_excesivos", "fecha_futura", "monto_inusual". Si la foto no es un cuaderno o no se puede leer, devuelve "legible": false, "movimientos": [] y una pregunta pidiendo otra foto con buena luz y de frente.
+
+- Antiduplicados: calcula SHA-256 de cada imagen por usuaria; si ya existe, no la procesa y responde "Esta foto ya la registré el {fecha} ✓". Cuéntalo como señal en Confiabilidad.

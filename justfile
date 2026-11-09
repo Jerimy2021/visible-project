@@ -27,6 +27,18 @@ deploy: build
     eval "$(aws configure export-credentials --profile {{profile}} --format env)" && \
         env -u AWS_PROFILE sam deploy
 
+# Construye el panel con VITE_API_URL del stack, lo sube a S3 e invalida CloudFront
+web:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    salida() { aws cloudformation describe-stacks --stack-name {{stack}} --region {{region}} \
+        --profile {{profile}} --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue" --output text; }
+    API=$(salida ApiBaseUrl); BUCKET=$(salida WebBucketName); DIST=$(salida WebDistributionId)
+    echo "API=$API  BUCKET=$BUCKET  DIST=$DIST"
+    ( cd web && npm install --no-audit --no-fund --silent && VITE_API_URL="$API" npm run build )
+    aws s3 sync web/dist "s3://$BUCKET" --delete --region {{region}} --profile {{profile}}
+    aws cloudfront create-invalidation --distribution-id "$DIST" --paths "/*" --profile {{profile}} --output text
+
 # Imprime el verify token de Meta (para pegarlo en la config del webhook)
 verify-token:
     aws ssm get-parameter --name /visible/meta/verify_token --with-decryption \
