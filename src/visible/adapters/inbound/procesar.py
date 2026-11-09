@@ -1,6 +1,7 @@
 """Handler de ProcesarFunction: descarga evidencia, extrae movimientos, responde.
 
-Se invoca de forma asíncrona desde el webhook con el MensajeEntrante serializado.
+Se invoca de forma asíncrona desde el webhook con el MensajeEntrante serializado,
+o con un payload de clasificación (respuesta de botón/lista del usuario).
 """
 
 import logging
@@ -20,6 +21,8 @@ from visible.domain.mensaje import MensajeEntrante, desde_dict
 logging.getLogger().setLevel(logging.INFO)
 logger = logging.getLogger("visible.procesar")
 
+MENSAJE_CLASIFICADO = "✓ Guardado. La próxima vez lo clasifico solo."
+
 
 def _crear_extractor() -> Extractor:
     if os.environ.get("EXTRACTOR", "fake") == "bedrock":
@@ -32,30 +35,49 @@ def _crear_extractor() -> Extractor:
     return FakeExtractor()
 
 
-def _construir_contenido(mensaje: MensajeEntrante) -> tuple[Contenido, str]:
+def _construir_contenido(
+    mensaje: MensajeEntrante, conceptos: tuple[str, ...]
+) -> tuple[Contenido, str]:
     """Devuelve (contenido, evidencia_key). La key es "" para mensajes de solo texto."""
     if mensaje.medios:
         media_id, mime = mensaje.medios[0]
         datos, mime_real = MetaMediaDownloader().descargar(media_id)
         mime_final = mime_real or mime
         key = S3Evidencias().guardar(mensaje.telefono, media_id, datos, mime_final)
-        return Contenido(imagen=datos, mime_type=mime_final), key
-    return Contenido(texto=mensaje.texto), ""
+        return Contenido(imagen=datos, mime_type=mime_final, conceptos=conceptos), key
+    return Contenido(texto=mensaje.texto, conceptos=conceptos), ""
+
+
+def _clasificar(event: dict) -> dict:
+    """Aplica la respuesta de un botón: actualiza categoría y aprende el concepto."""
+    telefono = event.get("telefono", "")
+    partes = (event.get("clasificacion") or "").split("|")
+    if len(partes) != 3 or partes[0] != "clasif":
+        return {"estado": "ignorado"}
+    _, sk, categoria = partes
+    concepto = DynamoRepositorioMovimientos().actualizar_categoria(telefono, sk, categoria)
+    DynamoPerfiles().aprender(telefono, concepto, categoria)
+    WhatsAppSender().enviar_texto(telefono, MENSAJE_CLASIFICADO)
+    logger.info("clasificacion sk=%s categoria=%s concepto=%s", sk, categoria, concepto)
+    return {"estado": "clasificado"}
 
 
 def handler(event: dict, context: object) -> dict:
-    mensaje = desde_dict(event)
-
-    # Idempotencia: Meta reintenta; procesamos cada mensaje una sola vez.
     idempotencia = DynamoIdempotencia()
-    if not idempotencia.reservar(mensaje.mensaje_id):
-        return {"estado": "duplicado", "mensaje_id": mensaje.mensaje_id}
+    mensaje_id = event.get("mensaje_id", "")
+    if not idempotencia.reservar(mensaje_id):
+        return {"estado": "duplicado", "mensaje_id": mensaje_id}
 
     try:
-        # El perfil se crea al primer mensaje (registra el consentimiento).
-        DynamoPerfiles().crear_si_no_existe(mensaje.telefono)
-        contenido, evidencia_key = _construir_contenido(mensaje)
-        movimientos = procesar(
+        if event.get("clasificacion"):
+            return _clasificar(event)
+
+        mensaje = desde_dict(event)
+        perfiles = DynamoPerfiles()
+        perfiles.crear_si_no_existe(mensaje.telefono)
+        conceptos = tuple(perfiles.conceptos(mensaje.telefono))
+        contenido, evidencia_key = _construir_contenido(mensaje, conceptos)
+        extraccion = procesar(
             mensaje.telefono,
             contenido,
             _crear_extractor(),
@@ -64,7 +86,6 @@ def handler(event: dict, context: object) -> dict:
             evidencia_key,
         )
     except Exception:
-        # Libera la reserva para que el reintento async pueda reprocesar.
-        idempotencia.liberar(mensaje.mensaje_id)
+        idempotencia.liberar(mensaje_id)
         raise
-    return {"estado": "ok", "movimientos": len(movimientos)}
+    return {"estado": "ok", "movimientos": len(extraccion.movimientos)}

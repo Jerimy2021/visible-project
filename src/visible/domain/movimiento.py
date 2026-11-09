@@ -1,15 +1,28 @@
-"""Modelo de dominio: un movimiento financiero extraído del cuaderno."""
+"""Modelo de dominio del movimiento financiero (sin dependencias de AWS)."""
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from enum import StrEnum
 
+MAX_DIAS_ATRAS = 60
 
-class TipoMovimiento(StrEnum):
-    VENTA = "venta"
+
+class Categoria(StrEnum):
+    INGRESO = "ingreso"
     GASTO_NEGOCIO = "gasto_negocio"
-    GASTO_CASA = "gasto_casa"
+    GASTO_PERSONAL = "gasto_personal"
+    DEUDA = "deuda"
+    POR_CLASIFICAR = "por_clasificar"
+    MOVIMIENTO_INTERNO = "movimiento_interno"
+
+
+# Compatibilidad con movimientos antiguos (campo `tipo`).
+LEGACY_TIPO = {
+    "venta": Categoria.INGRESO,
+    "gasto_negocio": Categoria.GASTO_NEGOCIO,
+    "gasto_casa": Categoria.GASTO_PERSONAL,
+}
 
 
 @dataclass(frozen=True)
@@ -19,10 +32,33 @@ class Movimiento:
     fecha: date
     monto: Decimal
     concepto: str
-    tipo: TipoMovimiento
-    confianza: float
-    origen: str = ""  # p. ej. "yape" (verificado), "efectivo"; "" = desconocido
+    categoria: Categoria
+    subcategoria: str = ""
+    confianza: float = 1.0
+    origen: str = ""  # "yape" (incluye plin) o "efectivo"
+    por_cobrar: bool = False
 
     @property
-    def es_venta(self) -> bool:
-        return self.tipo is TipoMovimiento.VENTA
+    def es_ingreso(self) -> bool:
+        return self.categoria is Categoria.INGRESO
+
+
+def normalizar_fecha(fecha: date, recepcion: date, max_dias: int = MAX_DIAS_ATRAS) -> date:
+    """Nunca futura ni > max_dias atrás; fuera de rango -> fecha de recepción."""
+    if fecha > recepcion or fecha < recepcion - timedelta(days=max_dias):
+        return recepcion
+    return fecha
+
+
+def categoria_desde_opcion(opcion: str) -> Categoria:
+    """Mapea la etiqueta de un botón de desambiguación a una categoría."""
+    o = opcion.lower()
+    if "negocio" in o:
+        return Categoria.GASTO_NEGOCIO
+    if any(x in o for x in ("personal", "casa", "familia", "hogar")):
+        return Categoria.GASTO_PERSONAL
+    if any(x in o for x in ("venta", "ingreso", "cliente", "cobro")):
+        return Categoria.INGRESO
+    if any(x in o for x in ("deuda", "préstamo", "prestamo", "cuota")):
+        return Categoria.DEUDA
+    return Categoria.POR_CLASIFICAR

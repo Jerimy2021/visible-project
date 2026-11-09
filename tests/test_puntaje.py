@@ -3,7 +3,7 @@
 from datetime import date, timedelta
 from decimal import Decimal
 
-from visible.domain.movimiento import Movimiento, TipoMovimiento
+from visible.domain.movimiento import Categoria, Movimiento, normalizar_fecha
 from visible.domain.puntaje import (
     _cuota_francesa,
     decidir_credito,
@@ -15,12 +15,19 @@ HOY = date(2026, 11, 8)
 
 def venta(dias_atras: int, monto: str, origen: str = "") -> Movimiento:
     return Movimiento(
-        HOY - timedelta(days=dias_atras), Decimal(monto), "venta", TipoMovimiento.VENTA, 0.9, origen
+        HOY - timedelta(days=dias_atras),
+        Decimal(monto),
+        "venta",
+        Categoria.INGRESO,
+        confianza=0.9,
+        origen=origen,
     )
 
 
-def gasto(dias_atras: int, monto: str, tipo=TipoMovimiento.GASTO_NEGOCIO) -> Movimiento:
-    return Movimiento(HOY - timedelta(days=dias_atras), Decimal(monto), "gasto", tipo, 0.9)
+def gasto(dias_atras: int, monto: str, categoria=Categoria.GASTO_NEGOCIO) -> Movimiento:
+    return Movimiento(
+        HOY - timedelta(days=dias_atras), Decimal(monto), "gasto", categoria, confianza=0.9
+    )
 
 
 def test_cuota_francesa_conocida():
@@ -82,3 +89,27 @@ def test_tendencia_positiva():
     movs = [venta(21, "100"), venta(0, "200")]
     ev = evaluar(movs, hoy=HOY)
     assert ev.tendencia_pct == 100.0
+
+
+def test_normalizar_fecha():
+    assert normalizar_fecha(date(2026, 11, 20), HOY) == HOY  # futura -> recepción
+    assert normalizar_fecha(date(2025, 7, 19), HOY) == HOY  # >60 días -> recepción
+    assert normalizar_fecha(date(2026, 11, 1), HOY) == date(2026, 11, 1)  # válida
+
+
+def test_movimiento_interno_no_cuenta():
+    movs = [venta(1, "100"), gasto(1, "9999", Categoria.MOVIMIENTO_INTERNO)]
+    ev = evaluar(movs, hoy=HOY)
+    # el movimiento interno no entra como venta ni gasto
+    assert ev.ventas_por_semana[-1] == 100.0
+    assert ev.gastos_por_semana[-1] == 0.0
+
+
+def test_gasto_personal_fuera_del_margen_pero_baja_libre():
+    con_personal = evaluar(
+        [venta(1, "1000"), gasto(1, "400"), gasto(1, "200", Categoria.GASTO_PERSONAL)], hoy=HOY
+    )
+    sin_personal = evaluar([venta(1, "1000"), gasto(1, "400")], hoy=HOY)
+    # El margen (negocio) no cambia; la base de crédito sí baja con gasto personal.
+    assert con_personal.subpuntajes["margen"] == sin_personal.subpuntajes["margen"]
+    assert con_personal.decision.monto <= sin_personal.decision.monto

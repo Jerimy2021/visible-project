@@ -7,12 +7,17 @@ GET /perfiles/{telefono}      -> ficha completa (indicadores, series, decisión,
 
 import json
 import os
-from datetime import date
 from decimal import Decimal
 
 from visible.adapters.outbound.dynamo_movimientos import DynamoRepositorioMovimientos
 from visible.adapters.outbound.dynamo_perfiles import DynamoPerfiles
-from visible.domain.puntaje import ESTADO_APTA, ESTADO_FALTAN, ESTADO_PROCESO, evaluar
+from visible.domain.puntaje import (
+    ESTADO_APTA,
+    ESTADO_FALTAN,
+    ESTADO_PROCESO,
+    evaluar,
+    hoy_lima,
+)
 
 URL_TTL = 600  # 10 min
 CORS = os.environ.get("CORS_ORIGIN", "*")
@@ -49,7 +54,8 @@ def _presign(bucket: str, key: str) -> str | None:
 
 def _resumen_perfil(perfil: dict, movs_repo: DynamoRepositorioMovimientos) -> dict:
     telefono = perfil["telefono"]
-    ev = evaluar(movs_repo.leer_ventana(telefono, date.today()))
+    hoy = hoy_lima()
+    ev = evaluar(movs_repo.leer_ventana(telefono, hoy), hoy=hoy)
     return {
         "telefono": telefono,
         "nombre": perfil.get("nombre", ""),
@@ -63,7 +69,8 @@ def _resumen_perfil(perfil: dict, movs_repo: DynamoRepositorioMovimientos) -> di
 
 def _ficha(perfil: dict, movs_repo: DynamoRepositorioMovimientos, bucket: str) -> dict:
     telefono = perfil["telefono"]
-    ev = evaluar(movs_repo.leer_ventana(telefono, date.today()))
+    hoy = hoy_lima()
+    ev = evaluar(movs_repo.leer_ventana(telefono, hoy), hoy=hoy)
     ultimos = []
     for it in movs_repo.ultimos(telefono, 20):
         ultimos.append(
@@ -71,7 +78,9 @@ def _ficha(perfil: dict, movs_repo: DynamoRepositorioMovimientos, bucket: str) -
                 "fecha": it.get("fecha"),
                 "monto": it.get("monto"),
                 "concepto": it.get("concepto", ""),
-                "tipo": it.get("tipo"),
+                "categoria": it.get("categoria") or it.get("tipo"),
+                "subcategoria": it.get("subcategoria", ""),
+                "por_cobrar": bool(it.get("por_cobrar", False)),
                 "origen": it.get("origen", ""),
                 "foto_url": _presign(bucket, it.get("evidencia_key", "")),
             }

@@ -123,6 +123,7 @@ Resources:
               Action:
                 - dynamodb:PutItem
                 - dynamodb:BatchWriteItem
+                - dynamodb:UpdateItem
               Resource: !GetAtt MovimientosTable.Arn
             - Sid: ReservarIdempotencia
               Effect: Allow
@@ -130,9 +131,12 @@ Resources:
                 - dynamodb:PutItem
                 - dynamodb:DeleteItem
               Resource: !GetAtt IdempotenciaTable.Arn
-            - Sid: CrearPerfil
+            - Sid: EscribirPerfil
               Effect: Allow
-              Action: dynamodb:PutItem
+              Action:
+                - dynamodb:PutItem
+                - dynamodb:UpdateItem
+                - dynamodb:GetItem
               Resource: !GetAtt PerfilesTable.Arn
             - Sid: InvocarBedrock
               Effect: Allow

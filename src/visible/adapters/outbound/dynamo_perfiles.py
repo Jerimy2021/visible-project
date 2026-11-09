@@ -26,6 +26,7 @@ class DynamoPerfiles:
                     "zona": "",
                     "consentimiento": date.today().isoformat(),
                     "creado_en": date.today().isoformat(),
+                    "conceptos": {},
                 },
                 ConditionExpression="attribute_not_exists(telefono)",
             )
@@ -41,3 +42,22 @@ class DynamoPerfiles:
 
     def listar(self) -> list[dict]:
         return self._tabla().scan().get("Items", [])
+
+    def conceptos(self, telefono: str) -> list[str]:
+        """Conceptos aprendidos como "concepto = categoria" (para inyectar al prompt)."""
+        item = self.obtener(telefono) or {}
+        mapa = item.get("conceptos", {}) or {}
+        return [f"{k} = {v}" for k, v in mapa.items()]
+
+    def aprender(self, telefono: str, concepto: str, categoria: str) -> None:
+        """Guarda concepto -> categoria para esta usuaria (read-modify-write del mapa)."""
+        if not concepto:
+            return
+        item = self.obtener(telefono) or {"telefono": telefono}
+        mapa = item.get("conceptos", {}) or {}
+        mapa[concepto] = categoria
+        self._tabla().update_item(
+            Key={"telefono": telefono},
+            UpdateExpression="SET conceptos = :m",
+            ExpressionAttributeValues={":m": mapa},
+        )

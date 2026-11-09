@@ -113,6 +113,27 @@ def handler(event: dict, context: object) -> dict:
 
     payload = json.loads(raw or b"{}")
     # Responde 200 rápido e invoca el procesamiento async (Bedrock/descarga tardan).
-    for mensaje in parsear_mensajes(payload):
-        invocar_procesar(a_dict(mensaje))
+    for msg in _mensajes_crudos(payload):
+        invocar_procesar(_a_evento(msg))
     return {"statusCode": 200, "headers": {"Content-Type": "text/plain"}, "body": "OK"}
+
+
+def _mensajes_crudos(payload: dict) -> list[dict]:
+    msgs: list[dict] = []
+    for entry in payload.get("entry", []):
+        for change in entry.get("changes", []):
+            msgs.extend(change.get("value", {}).get("messages", []))
+    return msgs
+
+
+def _a_evento(msg: dict) -> dict:
+    """Payload async: respuesta de botón/lista -> clasificación; si no, mensaje normal."""
+    if msg.get("type") == "interactive":
+        inter = msg.get("interactive", {})
+        reply = inter.get("button_reply") or inter.get("list_reply") or {}
+        return {
+            "clasificacion": reply.get("id", ""),
+            "telefono": msg.get("from", ""),
+            "mensaje_id": msg.get("id", ""),
+        }
+    return a_dict(_a_mensaje(msg))

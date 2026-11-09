@@ -8,10 +8,18 @@ from __future__ import annotations
 
 import statistics
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal
 
-from visible.domain.movimiento import Movimiento
+from visible.domain.movimiento import Categoria, Movimiento
+
+LIMA = timezone(timedelta(hours=-5))  # America/Lima (sin DST)
+
+
+def hoy_lima() -> date:
+    """Fecha actual en America/Lima (consistente entre seed, API y Lambda/UTC)."""
+    return datetime.now(LIMA).date()
+
 
 # --- Parámetros (explícitos y explicables) ---------------------------------
 
@@ -157,22 +165,28 @@ def evaluar(movimientos: list[Movimiento], hoy: date | None = None) -> Evaluacio
     hoy = hoy or date.today()
     en_ventana = [(m, s) for m in movimientos if (s := _semana(m, hoy)) is not None]
 
-    ventas_sem = [Decimal(0)] * SEMANAS
-    gastos_sem = [Decimal(0)] * SEMANAS
+    ventas_sem = [Decimal(0)] * SEMANAS  # categoria ingreso
+    gastos_sem = [Decimal(0)] * SEMANAS  # categoria gasto_negocio
+    personal_sem = [Decimal(0)] * SEMANAS  # gasto_personal (solo para "libre al mes")
     heatmap = [[Decimal(0)] * 7 for _ in range(SEMANAS)]
     dias_con_registro: set[date] = set()
     buckets_con_datos: set[int] = set()
     ventas: list[Movimiento] = []
 
     for m, s in en_ventana:
+        # movimiento_interno (y deuda / por_clasificar) no cuentan como ingreso ni gasto.
+        if m.categoria in (Categoria.MOVIMIENTO_INTERNO, Categoria.DEUDA, Categoria.POR_CLASIFICAR):
+            continue
         buckets_con_datos.add(s)
         dias_con_registro.add(m.fecha)
-        if m.es_venta:
+        if m.categoria is Categoria.INGRESO:
             ventas_sem[s] += m.monto
             heatmap[s][m.fecha.weekday()] += m.monto
             ventas.append(m)
-        else:
+        elif m.categoria is Categoria.GASTO_NEGOCIO:
             gastos_sem[s] += m.monto
+        elif m.categoria is Categoria.GASTO_PERSONAL:
+            personal_sem[s] += m.monto
 
     semanas_con_datos = len(buckets_con_datos)
     presentes = sorted(buckets_con_datos)
@@ -206,9 +220,10 @@ def evaluar(movimientos: list[Movimiento], hoy: date | None = None) -> Evaluacio
         yape = sum(1 for v in ventas if v.origen == "yape")
         coincidencia = round(100 * yape / len(ventas), 1)
 
-    # Margen
+    # Margen de negocio (no incluye gasto personal)
     tot_v = sum((ventas_sem[s] for s in range(SEMANAS)), Decimal(0))
     tot_g = sum((gastos_sem[s] for s in range(SEMANAS)), Decimal(0))
+    tot_personal = sum((personal_sem[s] for s in range(SEMANAS)), Decimal(0))
     margen = (tot_v - tot_g) / tot_v if tot_v > 0 else Decimal(0)
 
     # Subpuntajes 0..1
@@ -244,8 +259,10 @@ def evaluar(movimientos: list[Movimiento], hoy: date | None = None) -> Evaluacio
     # En "Faltan datos" el puntaje no es confiable: el panel muestra "—".
     puntaje_expuesto = None if estado == ESTADO_FALTAN else puntaje
 
-    # Base para el crédito: ganancia promedio semanal
-    base_semanal = (tot_v - tot_g) / semanas_con_datos if semanas_con_datos else Decimal(0)
+    # Base para el crédito ("libre al mes"): descuenta también el gasto personal.
+    base_semanal = (
+        (tot_v - tot_g - tot_personal) / semanas_con_datos if semanas_con_datos else Decimal(0)
+    )
 
     return Evaluacion(
         estado=estado,

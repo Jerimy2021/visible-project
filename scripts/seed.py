@@ -13,10 +13,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from visible.domain.movimiento import Movimiento, TipoMovimiento  # noqa: E402
-from visible.domain.puntaje import evaluar  # noqa: E402
+from visible.domain.movimiento import Categoria, Movimiento  # noqa: E402
+from visible.domain.puntaje import evaluar, hoy_lima  # noqa: E402
 
-HOY = date.today()
+HOY = hoy_lima()
 TABLA_MOV = "visible-movimientos"
 TABLA_PERF = "visible-perfiles"
 
@@ -40,7 +40,13 @@ def construir(cfg: dict) -> list[Movimiento]:
             origen = "yape" if d < n_yape else "efectivo"
             movs.append(
                 Movimiento(
-                    _dia(semana, d), monto, "ventas del día", TipoMovimiento.VENTA, 0.9, origen
+                    _dia(semana, d),
+                    monto,
+                    "ventas del día",
+                    Categoria.INGRESO,
+                    subcategoria="venta_yape" if origen == "yape" else "venta_efectivo",
+                    confianza=0.9,
+                    origen=origen,
                 )
             )
         # Gastos: sobre días ya con registro (no inflan la constancia)
@@ -51,8 +57,9 @@ def construir(cfg: dict) -> list[Movimiento]:
                     _dia(semana, 0),
                     Decimal(gasto_total),
                     "compra de mercadería",
-                    TipoMovimiento.GASTO_NEGOCIO,
-                    0.9,
+                    Categoria.GASTO_NEGOCIO,
+                    subcategoria="mercaderia",
+                    confianza=0.9,
                 )
             )
     return movs
