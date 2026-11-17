@@ -281,6 +281,171 @@ Resources:
             Path: /extintor/{codigo}
             Method: OPTIONS
 
+  # --- Bot de WhatsApp ------------------------------------------------------
+  BotLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-bot"
+      RetentionInDays: 14
+
+  BotFunction:
+    Type: AWS::Serverless::Function
+    DependsOn: BotLogGroup
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-bot"
+      Handler: visible.adapters.inbound.bot.handler
+      Timeout: 30
+      MemorySize: 512
+      Environment:
+        Variables:
+          TABLA_SITES: !Ref SitesTable
+          TABLA_EXTINTORES: !Ref ExtintoresTable
+          TABLA_MANTENIMIENTOS: !Ref MantenimientosTable
+          TABLA_APROBACIONES: !Ref AprobacionesTable
+          TABLA_USUARIOS: !Ref UsuariosTable
+          TABLA_IDEMPOTENCIA: !Ref IdempotenciaTable
+          META_ACCESS_TOKEN_PARAM: /visible/meta/access_token
+          META_PHONE_NUMBER_ID_PARAM: /visible/meta/phone_number_id
+          MODEL_ID_BOT: us.anthropic.claude-haiku-4-5-20251001-v1:0
+      Policies:
+        - Statement:
+            - Sid: LeerTablas
+              Effect: Allow
+              Action: [dynamodb:Scan, dynamodb:Query, dynamodb:GetItem]
+              Resource:
+                - !GetAtt SitesTable.Arn
+                - !GetAtt ExtintoresTable.Arn
+                - !GetAtt MantenimientosTable.Arn
+                - !Sub "${MantenimientosTable.Arn}/index/*"
+                - !GetAtt AprobacionesTable.Arn
+                - !GetAtt UsuariosTable.Arn
+                - !Sub "${UsuariosTable.Arn}/index/*"
+            - Sid: EscribirMantYIdem
+              Effect: Allow
+              Action: [dynamodb:PutItem, dynamodb:BatchWriteItem]
+              Resource:
+                - !GetAtt MantenimientosTable.Arn
+                - !GetAtt IdempotenciaTable.Arn
+            - Sid: LeerParamsMeta
+              Effect: Allow
+              Action: ssm:GetParameter
+              Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/visible/meta/*"
+            - Sid: DescifrarViaSsm
+              Effect: Allow
+              Action: kms:Decrypt
+              Resource: "*"
+              Condition:
+                StringEquals:
+                  kms:ViaService: !Sub "ssm.${AWS::Region}.amazonaws.com"
+            - Sid: InvocarBedrock
+              Effect: Allow
+              Action: bedrock:InvokeModel
+              Resource:
+                - !Sub "arn:aws:bedrock:us-east-1:${AWS::AccountId}:inference-profile/us.anthropic.claude-haiku-4-5-20251001-v1:0"
+                - "arn:aws:bedrock:*::foundation-model/anthropic.claude-haiku-4-5*"
+
+  WebhookLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-webhook"
+      RetentionInDays: 14
+
+  WebhookFunction:
+    Type: AWS::Serverless::Function
+    DependsOn: WebhookLogGroup
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-webhook"
+      Handler: visible.adapters.inbound.meta_webhook.handler
+      Timeout: 10
+      MemorySize: 256
+      Environment:
+        Variables:
+          META_APP_SECRET_PARAM: /visible/meta/app_secret
+          META_VERIFY_TOKEN_PARAM: /visible/meta/verify_token
+          BOT_FUNCTION_NAME: !Ref BotFunction
+      Policies:
+        - Statement:
+            - Sid: LeerParamsMeta
+              Effect: Allow
+              Action: ssm:GetParameter
+              Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/visible/meta/*"
+            - Sid: DescifrarViaSsm
+              Effect: Allow
+              Action: kms:Decrypt
+              Resource: "*"
+              Condition:
+                StringEquals:
+                  kms:ViaService: !Sub "ssm.${AWS::Region}.amazonaws.com"
+            - Sid: InvocarBot
+              Effect: Allow
+              Action: lambda:InvokeFunction
+              Resource: !GetAtt BotFunction.Arn
+      Events:
+        Post:
+          Type: HttpApi
+          Properties:
+            Path: /webhook
+            Method: POST
+        Get:
+          Type: HttpApi
+          Properties:
+            Path: /webhook
+            Method: GET
+
+  RecordatorioLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-recordatorio"
+      RetentionInDays: 14
+
+  RecordatorioFunction:
+    Type: AWS::Serverless::Function
+    DependsOn: RecordatorioLogGroup
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-recordatorio"
+      Handler: visible.adapters.inbound.recordatorio.handler
+      Timeout: 60
+      MemorySize: 512
+      Environment:
+        Variables:
+          TABLA_SITES: !Ref SitesTable
+          TABLA_EXTINTORES: !Ref ExtintoresTable
+          TABLA_MANTENIMIENTOS: !Ref MantenimientosTable
+          TABLA_APROBACIONES: !Ref AprobacionesTable
+          TABLA_USUARIOS: !Ref UsuariosTable
+          META_ACCESS_TOKEN_PARAM: /visible/meta/access_token
+          META_PHONE_NUMBER_ID_PARAM: /visible/meta/phone_number_id
+          PLANTILLA_RECORDATORIO: hello_world
+          PLANTILLA_IDIOMA: en_US
+      Policies:
+        - Statement:
+            - Sid: LeerTablas
+              Effect: Allow
+              Action: [dynamodb:Scan]
+              Resource:
+                - !GetAtt SitesTable.Arn
+                - !GetAtt ExtintoresTable.Arn
+                - !GetAtt MantenimientosTable.Arn
+                - !GetAtt AprobacionesTable.Arn
+                - !GetAtt UsuariosTable.Arn
+            - Sid: LeerParamsMeta
+              Effect: Allow
+              Action: ssm:GetParameter
+              Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/visible/meta/*"
+            - Sid: DescifrarViaSsm
+              Effect: Allow
+              Action: kms:Decrypt
+              Resource: "*"
+              Condition:
+                StringEquals:
+                  kms:ViaService: !Sub "ssm.${AWS::Region}.amazonaws.com"
+      Events:
+        Diario:
+          Type: Schedule
+          Properties:
+            # 13:00 UTC = 08:00 America/Lima
+            Schedule: cron(0 13 * * ? *)
+
   # --- Panel (S3 privado + CloudFront OAC); el dashboard llega en el paso 4 -
   WebBucket:
     Type: AWS::S3::Bucket
@@ -348,6 +513,9 @@ Outputs:
   ImportUrl:
     Description: Endpoint para pedir URL de subida de CSV
     Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/import/url"
+  WebhookUrl:
+    Description: Callback URL de Meta (misma que Visible)
+    Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/webhook"
   ApiBaseUrl:
     Description: Base de la API (para VITE_API_URL)
     Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com"

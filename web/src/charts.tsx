@@ -1,46 +1,71 @@
-const AZUL = "#2a4ba8";
-const MARINO = "#16264a";
-const ROJO = "#d4504e";
+const VERDE = "#1f9d5c";
+const AMBAR = "#ffc20e";
+const ROJO = "#e0282c";
+const NARANJA = "#ff8a00";
+const MUT = "#4a5462";
 
-export function Ring({ score }: { score: number | null }) {
-  const r = 46;
-  const c = 2 * Math.PI * r;
-  const v = score ?? 0;
-  const off = c * (1 - v / 100);
-  const color = v >= 70 ? "#15803d" : v >= 50 ? "#b45309" : "#9aa0ab";
+const color = (p: number) => (p >= 95 ? VERDE : p >= 70 ? AMBAR : ROJO);
+
+export function Gauge({ pct, inspeccionados, total }: { pct: number; inspeccionados: number; total: number }) {
+  const r = 85, c = Math.PI * r; // semicírculo
+  const off = c * (1 - pct / 100);
   return (
-    <svg width="120" height="120" viewBox="0 0 120 120">
-      <circle cx="60" cy="60" r={r} fill="none" stroke="#eceae3" strokeWidth="11" />
-      <circle
-        cx="60" cy="60" r={r} fill="none" stroke={score == null ? "#d6d3cc" : color}
-        strokeWidth="11" strokeLinecap="round" strokeDasharray={c} strokeDashoffset={off}
-        transform="rotate(-90 60 60)"
+    <svg viewBox="0 0 220 150" width="100%" style={{ maxWidth: 260 }}>
+      <path d="M25 125 A85 85 0 0 1 195 125" fill="none" stroke="#e6e9ed" strokeWidth="22" strokeLinecap="round" />
+      <path
+        d="M25 125 A85 85 0 0 1 195 125" fill="none" stroke={color(pct)} strokeWidth="22"
+        strokeLinecap="round" strokeDasharray={c} strokeDashoffset={off}
+        style={{ transition: "stroke-dashoffset .7s ease" }}
       />
-      <text x="60" y="58" textAnchor="middle" fontSize="30" fontWeight="800" fill={MARINO}>
-        {score == null ? "—" : score}
-      </text>
-      <text x="60" y="76" textAnchor="middle" fontSize="11" fill="#6b7280">/ 100</text>
+      <text x="110" y="112" textAnchor="middle" fontSize="44" fontWeight="800" fill="#14171c">{pct}%</text>
+      <text x="110" y="134" textAnchor="middle" fontSize="12" fill={MUT}>{inspeccionados} de {total} del mes</text>
     </svg>
   );
 }
 
-export function BarsVentasGastos({ ventas, gastos }: { ventas: number[]; gastos: number[] }) {
-  const w = 460, h = 190, pad = 28;
-  const max = Math.max(1, ...ventas, ...gastos);
-  const n = ventas.length;
-  const gw = (w - pad * 2) / n;
-  const y = (v: number) => h - pad - (v / max) * (h - pad * 2);
+export function BarsH({ data }: { data: { nombre: string; valor: number; total: number; sub?: string }[] }) {
   return (
-    <svg width="100%" viewBox={`0 0 ${w} ${h}`} role="img">
-      <line x1={pad} y1={h - pad} x2={w - pad} y2={h - pad} stroke="#e7e5df" />
-      {ventas.map((v, i) => {
-        const bx = pad + i * gw;
+    <div className="stack">
+      {data.map((d, i) => {
+        const pct = d.total ? Math.round((100 * d.valor) / d.total) : 0;
+        return (
+          <div key={i}>
+            <div className="row" style={{ justifyContent: "space-between", marginBottom: 3 }}>
+              <strong style={{ fontSize: 13 }}>{d.nombre}</strong>
+              <span style={{ fontSize: 12, color: MUT }}>{d.sub ?? `${d.valor}/${d.total}`} · <b>{pct}%</b></span>
+            </div>
+            <div className="bar-track" style={{ height: 16 }}>
+              <div className="bar-fill" style={{ width: `${pct}%`, background: color(pct) }} />
+            </div>
+          </div>
+        );
+      })}
+      {data.length === 0 && <p style={{ color: MUT }}>Sin datos en el periodo.</p>}
+    </div>
+  );
+}
+
+export function Tendencia({ serie }: { serie: { periodo: string; avance_pct: number }[] }) {
+  const w = 460, h = 180, pad = 28, n = serie.length;
+  const bw = (w - pad * 2) / n;
+  const y = (v: number) => h - pad - (v / 100) * (h - pad * 2);
+  const meta = y(100);
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} width="100%">
+      <line x1={pad} y1={meta} x2={w - pad} y2={meta} stroke={VERDE} strokeWidth="2" strokeDasharray="6 5" />
+      <text x={w - pad} y={meta - 6} textAnchor="end" fontSize="10" fill={MUT}>meta 100%</text>
+      {serie.map((s, i) => {
+        const ult = i === n - 1;
+        const bx = pad + i * bw;
+        const bh = h - pad - y(s.avance_pct);
         return (
           <g key={i}>
-            <rect x={bx + gw * 0.18} y={y(v)} width={gw * 0.28} height={h - pad - y(v)} fill={AZUL} rx="3" />
-            <rect x={bx + gw * 0.52} y={y(gastos[i])} width={gw * 0.28} height={h - pad - y(gastos[i])} fill={ROJO} rx="3" />
-            <text x={bx + gw / 2} y={h - pad + 15} textAnchor="middle" fontSize="11" fill="#6b7280">
-              Sem {i + 1}
+            <rect x={bx + bw * 0.2} y={y(s.avance_pct)} width={bw * 0.6} height={Math.max(bh, 1)} rx="3"
+              fill={ult ? ROJO : MUT} style={{ transition: "y .5s, height .5s" }} />
+            <text x={bx + bw / 2} y={y(s.avance_pct) - 5} textAnchor="middle" fontSize={ult ? 13 : 11}
+              fontWeight="800" fill={ult ? ROJO : MUT}>{s.avance_pct}%</text>
+            <text x={bx + bw / 2} y={h - pad + 15} textAnchor="middle" fontSize="10" fill={MUT}>
+              {s.periodo.slice(5)}
             </text>
           </g>
         );
@@ -49,50 +74,19 @@ export function BarsVentasGastos({ ventas, gastos }: { ventas: number[]; gastos:
   );
 }
 
-const DIAS = ["L", "M", "M", "J", "V", "S", "D"];
-
-export function Heatmap({ matrix }: { matrix: number[][] }) {
-  const max = Math.max(1, ...matrix.flat());
-  const cell = 30, gap = 6, left = 44, top = 20;
-  const color = (v: number) => {
-    if (v <= 0) return "#f1efe9";
-    const t = 0.2 + 0.8 * (v / max);
-    return `rgba(42,75,168,${t.toFixed(2)})`;
-  };
+export function PuntoFalla({ data }: { data: { punto: string; p: number }[] }) {
+  const max = Math.max(1, ...data.map((d) => d.p));
   return (
-    <svg width="100%" viewBox={`0 0 ${left + 7 * (cell + gap)} ${top + 4 * (cell + gap) + 6}`}>
-      {DIAS.map((d, i) => (
-        <text key={i} x={left + i * (cell + gap) + cell / 2} y={top - 6} textAnchor="middle" fontSize="11" fill="#6b7280">{d}</text>
+    <div className="stack" style={{ gap: 7 }}>
+      {data.map((d, i) => (
+        <div key={d.punto} className="row">
+          <span style={{ width: 92, fontSize: 12, fontWeight: i === 0 && d.p > 0 ? 800 : 400 }}>{d.punto}</span>
+          <div className="bar-track" style={{ height: 11 }}>
+            <div className="bar-fill" style={{ width: `${(100 * d.p) / max}%`, background: i === 0 && d.p > 0 ? "#d9161a" : i < 3 ? NARANJA : "#9aa3ae" }} />
+          </div>
+          <b style={{ width: 20, textAlign: "right" }}>{d.p}</b>
+        </div>
       ))}
-      {matrix.map((fila, r) => (
-        <g key={r}>
-          <text x={0} y={top + r * (cell + gap) + cell / 2 + 4} fontSize="11" fill="#6b7280">S{r + 1}</text>
-          {fila.map((v, c) => (
-            <rect key={c} x={left + c * (cell + gap)} y={top + r * (cell + gap)} width={cell} height={cell} rx="6" fill={color(v)}>
-              <title>{`S${r + 1} ${DIAS[c]}: S/ ${v}`}</title>
-            </rect>
-          ))}
-        </g>
-      ))}
-    </svg>
-  );
-}
-
-export function LineAhorroCuota({ ahorro, cuota }: { ahorro: number; cuota: number }) {
-  const w = 460, h = 150, pad = 30;
-  const max = Math.max(ahorro, cuota, 1) * 1.2;
-  const y = (v: number) => h - pad - (v / max) * (h - pad * 2);
-  const semanas = [0, 1, 2, 3];
-  return (
-    <svg width="100%" viewBox={`0 0 ${w} ${h}`}>
-      <line x1={pad} y1={h - pad} x2={w - pad} y2={h - pad} stroke="#e7e5df" />
-      <line x1={pad} y1={y(cuota)} x2={w - pad} y2={y(cuota)} stroke={ROJO} strokeWidth="2" strokeDasharray="5 4" />
-      <text x={w - pad} y={y(cuota) - 6} textAnchor="end" fontSize="11" fill={ROJO}>cuota semanal</text>
-      <polyline
-        points={semanas.map((s) => `${pad + (s / 3) * (w - pad * 2)},${y(ahorro)}`).join(" ")}
-        fill="none" stroke={AZUL} strokeWidth="3"
-      />
-      <text x={pad} y={y(ahorro) - 8} fontSize="11" fill={AZUL}>ahorro posible</text>
-    </svg>
+    </div>
   );
 }

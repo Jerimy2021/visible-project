@@ -37,6 +37,24 @@ def obtener_extintor(codigo: str) -> dict | None:
     return _tabla("TABLA_EXTINTORES").get_item(Key={"codigo": codigo}).get("Item")
 
 
+def usuario_por_telefono(telefono: str) -> dict | None:
+    from boto3.dynamodb.conditions import Key
+
+    resp = _tabla("TABLA_USUARIOS").query(
+        IndexName="telefono",
+        KeyConditionExpression=Key("telefono_whatsapp").eq(telefono),
+    )
+    items = resp.get("Items", [])
+    return items[0] if items else None
+
+
+def guardar_mantenimientos(items: list[dict]) -> None:
+    tabla = _tabla("TABLA_MANTENIMIENTOS")
+    with tabla.batch_writer() as lote:
+        for it in items:
+            lote.put_item(Item=it)
+
+
 def historial_extintor(codigo: str) -> list[dict]:
     from boto3.dynamodb.conditions import Key
 

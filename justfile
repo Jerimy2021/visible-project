@@ -34,8 +34,10 @@ web:
     salida() { aws cloudformation describe-stacks --stack-name {{stack}} --region {{region}} \
         --profile {{profile}} --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue" --output text; }
     API=$(salida ApiBaseUrl); BUCKET=$(salida WebBucketName); DIST=$(salida WebDistributionId)
+    KEY=$(aws ssm get-parameter --name /visible/brigada/api_key --with-decryption \
+        --profile {{profile}} --region {{region}} --query Parameter.Value --output text)
     echo "API=$API  BUCKET=$BUCKET  DIST=$DIST"
-    ( cd web && npm install --no-audit --no-fund --silent && VITE_API_URL="$API" npm run build )
+    ( cd web && npm install --no-audit --no-fund --silent && VITE_API_URL="$API" VITE_API_KEY="$KEY" npm run build )
     aws s3 sync web/dist "s3://$BUCKET" --delete --region {{region}} --profile {{profile}}
     aws cloudfront create-invalidation --distribution-id "$DIST" --paths "/*" --profile {{profile}} --output text
 

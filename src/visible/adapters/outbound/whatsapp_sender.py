@@ -68,6 +68,16 @@ class WhatsAppSender:
             }
         self._enviar({"to": telefono, "type": "interactive", "interactive": interactivo})
 
+    def enviar_plantilla(self, telefono: str, nombre: str, idioma: str = "en_US") -> None:
+        """Mensaje de plantilla aprobada (para iniciar conversación fuera de 24h)."""
+        self._enviar(
+            {
+                "to": telefono,
+                "type": "template",
+                "template": {"name": nombre, "language": {"code": idioma}},
+            }
+        )
+
     def enviar_link(self, telefono: str, texto: str, etiqueta: str, url: str) -> None:
         """Mensaje con un botón que abre una URL (interactive cta_url)."""
         self._enviar(
