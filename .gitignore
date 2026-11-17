@@ -30,3 +30,4 @@ dist/
 
 # Mockups del panel (pesados; referencia local)
 docs/*.html
+data/

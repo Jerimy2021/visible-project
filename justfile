@@ -39,25 +39,20 @@ web:
     aws s3 sync web/dist "s3://$BUCKET" --delete --region {{region}} --profile {{profile}}
     aws cloudfront create-invalidation --distribution-id "$DIST" --paths "/*" --profile {{profile}} --output text
 
-# Imprime el verify token de Meta (para pegarlo en la config del webhook)
-verify-token:
-    aws ssm get-parameter --name /visible/meta/verify_token --with-decryption \
-        --profile {{profile}} --region {{region}} --query Parameter.Value --output text
-
-# Imprime el output WebhookUrl del stack desplegado
+# Imprime los outputs del stack
 url:
     aws cloudformation describe-stacks --stack-name {{stack}} --region {{region}} --profile {{profile}} \
-        --query "Stacks[0].Outputs[?OutputKey=='WebhookUrl'].OutputValue" --output text
+        --query "Stacks[0].Outputs[].{Key:OutputKey,Value:OutputValue}" --output table
 
-# Tail de logs de una función: just logs fn=procesar (webhook|procesar|api)
+# Tail de logs de una función: just logs fn=import-process (import-process|import-api)
 logs fn:
     aws logs tail /aws/lambda/{{stack}}-{{fn}} --follow --format short \
         --region {{region}} --profile {{profile}}
 
-# Carga datos demo (3 emprendedoras) en DynamoDB
-seed:
+# Carga inicial de las listas desde data/raw a DynamoDB (solo arranque del piloto)
+import:
     eval "$(aws configure export-credentials --profile {{profile}} --format env)" && \
-        env -u AWS_PROFILE uv run --with boto3 python scripts/seed.py
+        env -u AWS_PROFILE uv run --with boto3 python scripts/import_inicial.py
 
 # Tests
 test:

@@ -1,7 +1,7 @@
 [project]
-name = "visible"
+name = "brigada"
 version = "0.1.0"
-description = "WhatsApp → historial financiero + perfil crediticio (Women in Tech 2026)"
+description = "Brigada — inspección mensual de extintores (WhatsApp + dashboard, SSOMA Alicorp)"
 requires-python = ">=3.12"
 dependencies = []
 

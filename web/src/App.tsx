@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getFicha, getPerfiles } from "./api";
-import Emprendedora from "./Emprendedora";
 import { BarsVentasGastos, Heatmap, LineAhorroCuota, Ring } from "./charts";
 import { cuotaFrancesa, pct, soles, TEA } from "./finance";
 import type { Ficha, Movimiento, ResumenPerfil } from "./types";
@@ -13,10 +12,7 @@ function Badge({ estado }: { estado: string }) {
   return <span className={`badge ${cls}`}>{estado}</span>;
 }
 
-/** /?mi=<id> abre la vista de la emprendedora; sin parámetro, el panel del analista. */
 export default function App() {
-  const mi = new URLSearchParams(window.location.search).get("mi");
-  if (mi) return <Emprendedora id={mi} />;
   return <PanelAnalista />;
 }
 
@@ -257,7 +253,6 @@ function FichaCliente({ ficha, itab, setItab, ofertada, onOfrecer }: {
                 <span className="chip">Sin RUC</span>
                 {ficha.consentimiento && <span className="chip">✓ Consentimiento · {ficha.consentimiento}</span>}
                 <span className="chip">{ficha.telefono_mascara}</span>
-                <a className="chip" href={`?mi=${ficha.id}`} target="_blank" rel="noreferrer">Ver vista de ella ↗</a>
               </div>
             </div>
             <div style={{ textAlign: "center" }}>

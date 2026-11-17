@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
-Description: Visible - WhatsApp (Meta) -> movimientos -> DynamoDB -> respuesta
+Description: Brigada - inspección mensual de extintores (importador + tablas)
 
 Globals:
   Function:
@@ -10,11 +10,95 @@ Globals:
     CodeUri: ../src
 
 Resources:
-  # --- Almacenamiento ------------------------------------------------------
-  EvidenciasBucket:
+  # --- Tablas (SharePoint -> DynamoDB) ------------------------------------
+  SitesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${AWS::StackName}-sites"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: codigo, AttributeType: S }
+      KeySchema:
+        - { AttributeName: codigo, KeyType: HASH }
+
+  ExtintoresTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${AWS::StackName}-extintores"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: codigo, AttributeType: S }
+      KeySchema:
+        - { AttributeName: codigo, KeyType: HASH }
+
+  MantenimientosTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${AWS::StackName}-mantenimientos"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: codigo, AttributeType: S }
+        - { AttributeName: periodo, AttributeType: S }
+        - { AttributeName: site, AttributeType: S }
+      KeySchema:
+        - { AttributeName: codigo, KeyType: HASH }
+        - { AttributeName: periodo, KeyType: RANGE }
+      GlobalSecondaryIndexes:
+        - IndexName: site-periodo
+          KeySchema:
+            - { AttributeName: site, KeyType: HASH }
+            - { AttributeName: periodo, KeyType: RANGE }
+          Projection: { ProjectionType: ALL }
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
+  AprobacionesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${AWS::StackName}-aprobaciones"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: site, AttributeType: S }
+        - { AttributeName: periodo, AttributeType: S }
+      KeySchema:
+        - { AttributeName: site, KeyType: HASH }
+        - { AttributeName: periodo, KeyType: RANGE }
+
+  UsuariosTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${AWS::StackName}-usuarios"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: id, AttributeType: S }
+        - { AttributeName: telefono_whatsapp, AttributeType: S }
+      KeySchema:
+        - { AttributeName: id, KeyType: HASH }
+      GlobalSecondaryIndexes:
+        - IndexName: telefono
+          KeySchema:
+            - { AttributeName: telefono_whatsapp, KeyType: HASH }
+          Projection: { ProjectionType: ALL }
+
+  # Reutilizada para el bot (idempotencia de mensajes de WhatsApp).
+  IdempotenciaTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${AWS::StackName}-idempotencia"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: pk, AttributeType: S }
+      KeySchema:
+        - { AttributeName: pk, KeyType: HASH }
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+  # --- Importador ----------------------------------------------------------
+  ImportBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub "${AWS::StackName}-evidencias-${AWS::AccountId}"
+      BucketName: !Sub "${AWS::StackName}-import-${AWS::AccountId}"
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
         BlockPublicPolicy: true
@@ -22,232 +106,98 @@ Resources:
         RestrictPublicBuckets: true
       BucketEncryption:
         ServerSideEncryptionConfiguration:
-          - ServerSideEncryptionByDefault:
-              SSEAlgorithm: AES256
-      VersioningConfiguration:
-        Status: Enabled
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
+      CorsConfiguration:
+        CorsRules:
+          - AllowedMethods: [PUT]
+            AllowedOrigins: ["*"]
+            AllowedHeaders: ["*"]
 
-  MovimientosTable:
-    Type: AWS::DynamoDB::Table
-    Properties:
-      TableName: !Sub "${AWS::StackName}-movimientos"
-      BillingMode: PAY_PER_REQUEST
-      AttributeDefinitions:
-        - AttributeName: telefono
-          AttributeType: S
-        - AttributeName: sk
-          AttributeType: S
-      KeySchema:
-        - AttributeName: telefono
-          KeyType: HASH
-        - AttributeName: sk
-          KeyType: RANGE
-      PointInTimeRecoverySpecification:
-        PointInTimeRecoveryEnabled: true
-
-  IdempotenciaTable:
-    Type: AWS::DynamoDB::Table
-    Properties:
-      TableName: !Sub "${AWS::StackName}-idempotencia"
-      BillingMode: PAY_PER_REQUEST
-      AttributeDefinitions:
-        - AttributeName: pk
-          AttributeType: S
-      KeySchema:
-        - AttributeName: pk
-          KeyType: HASH
-      TimeToLiveSpecification:
-        AttributeName: ttl
-        Enabled: true
-
-  PerfilesTable:
-    Type: AWS::DynamoDB::Table
-    Properties:
-      TableName: !Sub "${AWS::StackName}-perfiles"
-      BillingMode: PAY_PER_REQUEST
-      AttributeDefinitions:
-        - AttributeName: telefono
-          AttributeType: S
-      KeySchema:
-        - AttributeName: telefono
-          KeyType: HASH
-      PointInTimeRecoverySpecification:
-        PointInTimeRecoveryEnabled: true
-
-  # --- Procesamiento (async) ----------------------------------------------
-  ProcesarLogGroup:
+  ImportProcessLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-procesar"
+      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-import-process"
       RetentionInDays: 14
 
-  ProcesarFunction:
+  ImportProcessFunction:
     Type: AWS::Serverless::Function
-    DependsOn: ProcesarLogGroup
+    DependsOn: ImportProcessLogGroup
     Properties:
-      FunctionName: !Sub "${AWS::StackName}-procesar"
-      Handler: visible.adapters.inbound.procesar.handler
-      Timeout: 60
+      FunctionName: !Sub "${AWS::StackName}-import-process"
+      Handler: visible.adapters.inbound.importar.procesar_subida
+      Timeout: 120
       MemorySize: 512
       Environment:
         Variables:
-          EXTRACTOR: bedrock
-          GRAPH_API_VERSION: v25.0
-          MODEL_ID: us.anthropic.claude-sonnet-4-6
-          MODEL_ID_FALLBACK: us.anthropic.claude-haiku-4-5-20251001-v1:0
-          META_ACCESS_TOKEN_PARAM: /visible/meta/access_token
-          META_PHONE_NUMBER_ID_PARAM: /visible/meta/phone_number_id
-          BUCKET_EVIDENCIAS: !Ref EvidenciasBucket
-          TABLA_MOVIMIENTOS: !Ref MovimientosTable
-          TABLA_IDEMPOTENCIA: !Ref IdempotenciaTable
-          TABLA_PERFILES: !Ref PerfilesTable
-          LINK_PANEL: !Sub "https://${WebDistribution.DomainName}"
+          TABLA_SITES: !Ref SitesTable
+          TABLA_EXTINTORES: !Ref ExtintoresTable
+          TABLA_MANTENIMIENTOS: !Ref MantenimientosTable
+          TABLA_APROBACIONES: !Ref AprobacionesTable
+          TABLA_USUARIOS: !Ref UsuariosTable
       Policies:
         - Statement:
-            - Sid: LeerParamsMeta
+            - Sid: LeerEscribirImport
               Effect: Allow
-              Action: ssm:GetParameter
-              Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/visible/meta/*"
-            - Sid: DescifrarViaSsm
+              Action: [s3:GetObject, s3:PutObject]
+              # ARN construido (no !GetAtt) para evitar dependencia circular con el evento S3.
+              Resource: !Sub "arn:aws:s3:::${AWS::StackName}-import-${AWS::AccountId}/*"
+            - Sid: UpsertTablas
               Effect: Allow
-              Action: kms:Decrypt
-              Resource: "*"
-              Condition:
-                StringEquals:
-                  kms:ViaService: !Sub "ssm.${AWS::Region}.amazonaws.com"
-            - Sid: GuardarEvidencias
-              Effect: Allow
-              Action: s3:PutObject
-              Resource: !Sub "${EvidenciasBucket.Arn}/*"
-            - Sid: EscribirMovimientos
-              Effect: Allow
-              Action:
-                - dynamodb:PutItem
-                - dynamodb:BatchWriteItem
-                - dynamodb:UpdateItem
-              Resource: !GetAtt MovimientosTable.Arn
-            - Sid: ReservarIdempotencia
-              Effect: Allow
-              Action:
-                - dynamodb:PutItem
-                - dynamodb:DeleteItem
-                - dynamodb:GetItem
-              Resource: !GetAtt IdempotenciaTable.Arn
-            - Sid: EscribirPerfil
-              Effect: Allow
-              Action:
-                - dynamodb:PutItem
-                - dynamodb:UpdateItem
-                - dynamodb:GetItem
-              Resource: !GetAtt PerfilesTable.Arn
-            - Sid: InvocarBedrock
-              Effect: Allow
-              Action: bedrock:InvokeModel
+              Action: dynamodb:PutItem
               Resource:
-                - !Sub "arn:aws:bedrock:us-east-1:${AWS::AccountId}:inference-profile/us.anthropic.claude-sonnet-4-6"
-                - !Sub "arn:aws:bedrock:us-east-1:${AWS::AccountId}:inference-profile/us.anthropic.claude-haiku-4-5-20251001-v1:0"
-                - "arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-4-6*"
-                - "arn:aws:bedrock:*::foundation-model/anthropic.claude-haiku-4-5*"
-
-  # --- API del panel (solo lectura) ---------------------------------------
-  ApiLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-api"
-      RetentionInDays: 14
-
-  ApiFunction:
-    Type: AWS::Serverless::Function
-    DependsOn: ApiLogGroup
-    Properties:
-      FunctionName: !Sub "${AWS::StackName}-api"
-      Handler: visible.adapters.inbound.api.handler
-      Timeout: 15
-      MemorySize: 256
-      Environment:
-        Variables:
-          TABLA_MOVIMIENTOS: !Ref MovimientosTable
-          TABLA_PERFILES: !Ref PerfilesTable
-          BUCKET_EVIDENCIAS: !Ref EvidenciasBucket
-          CORS_ORIGIN: !Sub "https://${WebDistribution.DomainName}"
-      Policies:
-        - Statement:
-            - Sid: LeerPerfiles
-              Effect: Allow
-              Action:
-                - dynamodb:Scan
-                - dynamodb:GetItem
-              Resource: !GetAtt PerfilesTable.Arn
-            - Sid: LeerMovimientos
-              Effect: Allow
-              Action: dynamodb:Query
-              Resource: !GetAtt MovimientosTable.Arn
-            - Sid: LeerEvidencias
-              Effect: Allow
-              Action: s3:GetObject
-              Resource: !Sub "${EvidenciasBucket.Arn}/*"
+                - !GetAtt SitesTable.Arn
+                - !GetAtt ExtintoresTable.Arn
+                - !GetAtt MantenimientosTable.Arn
+                - !GetAtt AprobacionesTable.Arn
+                - !GetAtt UsuariosTable.Arn
       Events:
-        Lista:
-          Type: HttpApi
+        Subida:
+          Type: S3
           Properties:
-            Path: /perfiles
-            Method: GET
-        Ficha:
-          Type: HttpApi
-          Properties:
-            Path: /perfiles/{id}
-            Method: GET
+            Bucket: !Ref ImportBucket
+            Events: s3:ObjectCreated:*
+            Filter:
+              S3Key:
+                Rules:
+                  - { Name: prefix, Value: uploads/ }
 
-  # --- Webhook (inbound) ---------------------------------------------------
-  WebhookLogGroup:
+  ImportApiLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-webhook"
+      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-import-api"
       RetentionInDays: 14
 
-  WebhookFunction:
+  ImportApiFunction:
     Type: AWS::Serverless::Function
-    DependsOn: WebhookLogGroup
+    DependsOn: ImportApiLogGroup
     Properties:
-      FunctionName: !Sub "${AWS::StackName}-webhook"
-      Handler: visible.adapters.inbound.meta_webhook.handler
+      FunctionName: !Sub "${AWS::StackName}-import-api"
+      Handler: visible.adapters.inbound.importar.solicitar_url
       Timeout: 10
       MemorySize: 256
       Environment:
         Variables:
-          META_APP_SECRET_PARAM: /visible/meta/app_secret
-          META_VERIFY_TOKEN_PARAM: /visible/meta/verify_token
-          PROCESAR_FUNCTION_NAME: !Ref ProcesarFunction
+          BUCKET_IMPORT: !Ref ImportBucket
+          CORS_ORIGIN: !Sub "https://${WebDistribution.DomainName}"
       Policies:
         - Statement:
-            - Sid: LeerParamsMeta
+            - Sid: FirmarSubida
               Effect: Allow
-              Action: ssm:GetParameter
-              Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/visible/meta/*"
-            - Sid: DescifrarViaSsm
-              Effect: Allow
-              Action: kms:Decrypt
-              Resource: "*"
-              Condition:
-                StringEquals:
-                  kms:ViaService: !Sub "ssm.${AWS::Region}.amazonaws.com"
-            - Sid: InvocarProcesar
-              Effect: Allow
-              Action: lambda:InvokeFunction
-              Resource: !GetAtt ProcesarFunction.Arn
+              Action: s3:PutObject
+              Resource: !Sub "${ImportBucket.Arn}/*"
       Events:
-        WebhookPost:
+        Url:
           Type: HttpApi
           Properties:
-            Path: /webhook
+            Path: /import/url
             Method: POST
-        WebhookGet:
+        UrlOptions:
           Type: HttpApi
           Properties:
-            Path: /webhook
-            Method: GET
+            Path: /import/url
+            Method: OPTIONS
 
-  # --- Panel web (S3 privado + CloudFront OAC) -----------------------------
+  # --- Panel (S3 privado + CloudFront OAC); el dashboard llega en el paso 4 -
   WebBucket:
     Type: AWS::S3::Bucket
     Properties:
@@ -259,8 +209,7 @@ Resources:
         RestrictPublicBuckets: true
       BucketEncryption:
         ServerSideEncryptionConfiguration:
-          - ServerSideEncryptionByDefault:
-              SSEAlgorithm: AES256
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
 
   WebOAC:
     Type: AWS::CloudFront::OriginAccessControl
@@ -276,7 +225,7 @@ Resources:
     Properties:
       DistributionConfig:
         Enabled: true
-        Comment: Visible - panel del analista
+        Comment: Brigada - panel
         DefaultRootObject: index.html
         HttpVersion: http2
         PriceClass: PriceClass_100
@@ -284,21 +233,16 @@ Resources:
           - Id: webbucket
             DomainName: !GetAtt WebBucket.RegionalDomainName
             OriginAccessControlId: !Ref WebOAC
-            S3OriginConfig:
-              OriginAccessIdentity: ""
+            S3OriginConfig: { OriginAccessIdentity: "" }
         DefaultCacheBehavior:
           TargetOriginId: webbucket
           ViewerProtocolPolicy: redirect-to-https
           AllowedMethods: [GET, HEAD]
           Compress: true
-          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6  # Managed-CachingOptimized
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
         CustomErrorResponses:
-          - ErrorCode: 403
-            ResponseCode: 200
-            ResponsePagePath: /index.html
-          - ErrorCode: 404
-            ResponseCode: 200
-            ResponsePagePath: /index.html
+          - { ErrorCode: 403, ResponseCode: 200, ResponsePagePath: /index.html }
+          - { ErrorCode: 404, ResponseCode: 200, ResponsePagePath: /index.html }
 
   WebBucketPolicy:
     Type: AWS::S3::BucketPolicy
@@ -309,8 +253,7 @@ Resources:
         Statement:
           - Sid: CloudFrontOAC
             Effect: Allow
-            Principal:
-              Service: cloudfront.amazonaws.com
+            Principal: { Service: cloudfront.amazonaws.com }
             Action: s3:GetObject
             Resource: !Sub "${WebBucket.Arn}/*"
             Condition:
@@ -318,21 +261,18 @@ Resources:
                 AWS:SourceArn: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${WebDistribution.Id}"
 
 Outputs:
-  WebhookUrl:
-    Description: URL del webhook para configurar en Meta (callback URL)
-    Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/webhook"
-  PerfilesUrl:
-    Description: Endpoint de la API del panel (lista de perfiles)
-    Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/perfiles"
+  ImportUrl:
+    Description: Endpoint para pedir URL de subida de CSV
+    Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/import/url"
   ApiBaseUrl:
     Description: Base de la API (para VITE_API_URL)
     Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com"
+  ImportBucketName:
+    Value: !Ref ImportBucket
   WebUrl:
     Description: URL del panel (CloudFront)
     Value: !Sub "https://${WebDistribution.DomainName}"
   WebBucketName:
-    Description: Bucket del panel web
     Value: !Ref WebBucket
   WebDistributionId:
-    Description: Id de la distribución CloudFront (para invalidar)
     Value: !Ref WebDistribution
