@@ -48,6 +48,14 @@ ROSTER_PILOTO = [
         "telefono_whatsapp": "",
         "activo": False,
     },
+    {
+        "id": "u-jsandoval",
+        "nombre": "Jeri Sandoval",
+        "rol": "Administrador",
+        "alias": ["Jeri Sandoval"],
+        "telefono_whatsapp": "",
+        "activo": True,
+    },
 ]
 
 

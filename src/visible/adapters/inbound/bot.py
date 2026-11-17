@@ -12,14 +12,21 @@ from visible.adapters.outbound.dynamo_idempotencia import DynamoIdempotencia
 from visible.adapters.outbound.whatsapp_sender import WhatsAppSender
 from visible.application import bot as texto
 from visible.domain.centro import PUNTOS, centro
-from visible.domain.extintores import en_alcance, estado_inspeccion
+from visible.domain.extintores import ATRASADO, en_alcance, estado_inspeccion
 from visible.domain.fechas import hoy_lima
 from visible.domain.usuarios import resolver_id
 
 logging.getLogger().setLevel(logging.INFO)
 logger = logging.getLogger("brigada.bot")
 
-_BOTON_A_INTENCION = {"bot|faltan": "faltan", "bot|p": "p_abiertos", "bot|fin": "ya_termine"}
+_BOTON_A_INTENCION = {
+    "bot|faltan": "faltan",
+    "bot|p": "p_abiertos",
+    "bot|fin": "ya_termine",
+    "adm|resumen": "resumen",
+    "adm|equipo": "equipo",
+    "adm|alertas": "alertas",
+}
 
 
 def _pendientes_de(usuario, exts, por_cod, periodo, hoy):
@@ -70,13 +77,31 @@ def handler(event: dict, context: object) -> dict:
         return {"estado": "no_registrado"}
 
     intencion = _intencion(event)
-    logger.info("bot telefono=%s intencion=%s", telefono, intencion)
-    respuesta = _responder(intencion, usuario)
-    sender.enviar_opciones(telefono, respuesta, texto.BOTONES)
+    logger.info("bot telefono=%s rol=%s intencion=%s", telefono, usuario.get("rol"), intencion)
+    es_admin = usuario.get("rol") == "Administrador"
+    respuesta = _responder(intencion, usuario, es_admin)
+    sender.enviar_opciones(telefono, respuesta, texto.BOTONES_ADMIN if es_admin else texto.BOTONES)
     return {"estado": "ok", "intencion": intencion["intencion"]}
 
 
-def _responder(intencion: dict, usuario: dict) -> str:
+def _agrupar(mants: list[dict]) -> dict[str, list]:
+    por_cod: dict[str, list] = {}
+    for m in mants:
+        por_cod.setdefault(m["codigo"], []).append(m)
+    return por_cod
+
+
+def _atrasados(site: str, datos: dict, periodo: str, hoy) -> int:
+    por_cod = _agrupar(datos["mantenimientos"])
+    return sum(
+        1
+        for e in datos["extintores"]
+        if en_alcance(e, site)
+        and estado_inspeccion(e, por_cod.get(e["codigo"], []), periodo, hoy) == ATRASADO
+    )
+
+
+def _responder(intencion: dict, usuario: dict, es_admin: bool) -> str:
     hoy = hoy_lima()
     periodo = hoy.strftime("%Y-%m")
     tipo = intencion["intencion"]
@@ -84,27 +109,33 @@ def _responder(intencion: dict, usuario: dict) -> str:
     if tipo == "donde":
         return texto.texto_donde(repo.obtener_extintor(intencion["codigo"]), intencion["codigo"])
 
+    datos = repo.cargar_datos()
+    c = centro("HUA", periodo, datos, hoy)
+
+    if es_admin:
+        if tipo == "equipo":
+            return texto.texto_equipo(c["por_inspector"])
+        if tipo == "alertas":
+            return texto.texto_alertas(
+                c["alertas"]["pendientes"], _atrasados("HUA", datos, periodo, hoy)
+            )
+        if tipo == "resumen":
+            return texto.texto_resumen_admin(c)
+        return texto.TEXTO_NO_ENTENDI
+
     if tipo == "resumen":
-        return texto.texto_resumen(centro("HUA", periodo, repo.cargar_datos(), hoy))
-
-    exts = repo.scan_todo("TABLA_EXTINTORES")
-    mants = repo.scan_todo("TABLA_MANTENIMIENTOS")
-    por_cod: dict[str, list] = {}
-    for m in mants:
-        por_cod.setdefault(m["codigo"], []).append(m)
-
+        return texto.texto_resumen(c)
+    exts, mants = datos["extintores"], datos["mantenimientos"]
+    por_cod = _agrupar(mants)
     if tipo == "p_abiertos":
         return texto.texto_p_abiertos(_p_abiertos_de(usuario, mants))
-
     if tipo == "faltan":
         pend = _pendientes_de(usuario, exts, por_cod, periodo, hoy)
         return texto.texto_faltan(len(pend), pend)
-
     if tipo == "ya_termine":
         pend = _pendientes_de(usuario, exts, por_cod, periodo, hoy)
         repo.guardar_mantenimientos([_fila_reportada(e, periodo, usuario, hoy) for e in pend])
         return texto.texto_felicitacion(usuario.get("nombre", ""), len(pend))
-
     return texto.TEXTO_NO_ENTENDI
 
 

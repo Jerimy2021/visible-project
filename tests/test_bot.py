@@ -20,6 +20,27 @@ def test_textos():
     assert "José" in bot.texto_felicitacion("José Manuel", 5)
 
 
+def test_textos_admin():
+    c = {
+        "site": "HUA",
+        "periodo": "2026-11",
+        "avance_pct": 67,
+        "inspeccionados": 2,
+        "total": 3,
+        "faltan": 1,
+        "p_abiertos": 2,
+        "conformes_1a_pct": 50,
+        "aprobacion": {"estado": "Pendiente"},
+    }
+    assert "Avance 67%" in bot.texto_resumen_admin(c)
+    assert "José Manuel: 2/3" in bot.texto_equipo(
+        [{"inspector": "José Manuel", "hechos": 2, "asignados": 3}]
+    )
+    a = bot.texto_alertas([{"codigo": "HUA-2", "puntos_p": ["Presión"]}], 4)
+    assert "1 P abiertos · 4 atrasados" in a
+    assert [b[0] for b in bot.BOTONES_ADMIN] == ["adm|resumen", "adm|equipo", "adm|alertas"]
+
+
 def test_parsear_intencion():
     def resp(inp):
         return {

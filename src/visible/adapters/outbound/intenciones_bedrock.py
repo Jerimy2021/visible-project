@@ -7,8 +7,18 @@ Bedrock SOLO entiende la pregunta; los datos salen del dominio/API, nunca del mo
 import os
 
 MODELO = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+MODELO_RESPALDO = "us.anthropic.claude-sonnet-4-6"
 HERRAMIENTA = "responder_intencion"
-INTENCIONES = ["faltan", "donde", "p_abiertos", "resumen", "ya_termine", "otro"]
+INTENCIONES = [
+    "faltan",
+    "donde",
+    "p_abiertos",
+    "resumen",
+    "ya_termine",
+    "equipo",
+    "alertas",
+    "otro",
+]
 
 TOOL_SCHEMA = {
     "type": "object",
@@ -23,11 +33,12 @@ TOOL_SCHEMA = {
 }
 
 SYSTEM = (
-    "Clasificas el mensaje de un inspector de extintores en una intención. "
-    "faltan = cuántos le faltan por inspeccionar. donde = dónde está un extintor "
-    "(extrae su código). p_abiertos = sus observaciones/P pendientes. resumen = avance "
-    "del mes. ya_termine = dice que ya terminó o ya lo hizo. otro = cualquier otra cosa. "
-    "Responde solo con la herramienta."
+    "Clasificas el mensaje de un usuario (inspector o administrador) de inspección de "
+    "extintores en una intención. faltan = cuántos le faltan por inspeccionar. donde = "
+    "dónde está un extintor (extrae su código). p_abiertos = sus observaciones/P pendientes. "
+    "resumen = avance del mes / KPIs. ya_termine = dice que ya terminó o ya lo hizo. "
+    "equipo = avance por inspector (admin). alertas = P abiertos y atrasados de la planta "
+    "(admin). otro = cualquier otra cosa. Responde solo con la herramienta."
 )
 
 
@@ -43,12 +54,9 @@ def parsear_intencion(respuesta: dict) -> dict:
     return {"intencion": "otro", "codigo": ""}
 
 
-def clasificar(texto: str) -> dict:
-    import boto3
-
-    cliente = boto3.client("bedrock-runtime")
-    resp = cliente.converse(
-        modelId=os.environ.get("MODEL_ID_BOT", MODELO),
+def _converse(cliente, modelo: str, texto: str) -> dict:
+    return cliente.converse(
+        modelId=modelo,
         system=[{"text": SYSTEM}],
         messages=[{"role": "user", "content": [{"text": texto}]}],
         toolConfig={
@@ -56,7 +64,7 @@ def clasificar(texto: str) -> dict:
                 {
                     "toolSpec": {
                         "name": HERRAMIENTA,
-                        "description": "Clasifica la intención del inspector.",
+                        "description": "Clasifica la intención del usuario.",
                         "inputSchema": {"json": TOOL_SCHEMA},
                     }
                 }
@@ -64,4 +72,20 @@ def clasificar(texto: str) -> dict:
             "toolChoice": {"tool": {"name": HERRAMIENTA}},
         },
     )
-    return parsear_intencion(resp)
+
+
+def clasificar(texto: str) -> dict:
+    """Haiku primero; si falla, respaldo sonnet-4-6."""
+    import boto3
+
+    cliente = boto3.client("bedrock-runtime")
+    primario = os.environ.get("MODEL_ID_BOT", MODELO)
+    respaldo = os.environ.get("MODEL_ID_BOT_FALLBACK", MODELO_RESPALDO)
+    modelos = list(dict.fromkeys([primario, respaldo]))
+    for i, modelo in enumerate(modelos):
+        try:
+            return parsear_intencion(_converse(cliente, modelo, texto))
+        except Exception:
+            if i == len(modelos) - 1:
+                raise
+    return {"intencion": "otro", "codigo": ""}
