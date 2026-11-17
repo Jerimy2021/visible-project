@@ -197,6 +197,90 @@ Resources:
             Path: /import/url
             Method: OPTIONS
 
+  # --- API del Centro de control (solo lectura, con API key) ---------------
+  ApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-api"
+      RetentionInDays: 14
+
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    DependsOn: ApiLogGroup
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-api"
+      Handler: visible.adapters.inbound.api.handler
+      Timeout: 15
+      MemorySize: 512
+      Environment:
+        Variables:
+          TABLA_SITES: !Ref SitesTable
+          TABLA_EXTINTORES: !Ref ExtintoresTable
+          TABLA_MANTENIMIENTOS: !Ref MantenimientosTable
+          TABLA_APROBACIONES: !Ref AprobacionesTable
+          TABLA_USUARIOS: !Ref UsuariosTable
+          API_KEY_PARAM: /visible/brigada/api_key
+          CORS_ORIGIN: !Sub "https://${WebDistribution.DomainName}"
+      Policies:
+        - Statement:
+            - Sid: LeerTablas
+              Effect: Allow
+              Action: [dynamodb:Scan, dynamodb:Query, dynamodb:GetItem]
+              Resource:
+                - !GetAtt SitesTable.Arn
+                - !GetAtt ExtintoresTable.Arn
+                - !GetAtt MantenimientosTable.Arn
+                - !Sub "${MantenimientosTable.Arn}/index/*"
+                - !GetAtt AprobacionesTable.Arn
+                - !GetAtt UsuariosTable.Arn
+            - Sid: LeerApiKey
+              Effect: Allow
+              Action: ssm:GetParameter
+              Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/visible/brigada/api_key"
+            - Sid: DescifrarViaSsm
+              Effect: Allow
+              Action: kms:Decrypt
+              Resource: "*"
+              Condition:
+                StringEquals:
+                  kms:ViaService: !Sub "ssm.${AWS::Region}.amazonaws.com"
+      Events:
+        Centro:
+          Type: HttpApi
+          Properties:
+            Path: /centro
+            Method: GET
+        Extintores:
+          Type: HttpApi
+          Properties:
+            Path: /extintores
+            Method: GET
+        Extintor:
+          Type: HttpApi
+          Properties:
+            Path: /extintor/{codigo}
+            Method: GET
+        Pendientes:
+          Type: HttpApi
+          Properties:
+            Path: /inspectores/{id}/pendientes
+            Method: GET
+        CentroOpt:
+          Type: HttpApi
+          Properties:
+            Path: /centro
+            Method: OPTIONS
+        ExtintoresOpt:
+          Type: HttpApi
+          Properties:
+            Path: /extintores
+            Method: OPTIONS
+        ExtintorOpt:
+          Type: HttpApi
+          Properties:
+            Path: /extintor/{codigo}
+            Method: OPTIONS
+
   # --- Panel (S3 privado + CloudFront OAC); el dashboard llega en el paso 4 -
   WebBucket:
     Type: AWS::S3::Bucket

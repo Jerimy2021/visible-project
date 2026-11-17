@@ -23,10 +23,15 @@ def test_unifica_alias_miguel():
 
 def test_roster_piloto():
     ids = {u["id"] for u in ROSTER_PILOTO}
-    assert ids == {"u-gponte", "u-jchanta"}
+    assert ids == {"u-gponte", "u-jchanta", "u-mguzman", "u-yhuerto"}
     # Gianella aparece con otra grafía en AprobacionesMes -> debe resolver igual.
     assert resolver_id("Gianella Arcela Ponte Carrasco", ROSTER_PILOTO) == "u-gponte"
     assert resolver_id("Jose Manuel Chanta Torres", ROSTER_PILOTO) == "u-jchanta"
+    # Historial: las 3 grafías de Miguel resuelven a un solo usuario inactivo.
+    assert resolver_id("Miguel Guzmán", ROSTER_PILOTO) == "u-mguzman"
+    assert resolver_id("Miguel Angel Guzman Millones", ROSTER_PILOTO) == "u-mguzman"
+    inactivos = {u["id"] for u in ROSTER_PILOTO if not u["activo"]}
+    assert inactivos == {"u-mguzman", "u-yhuerto"}
 
 
 def test_item_usuario_omite_telefono_vacio():

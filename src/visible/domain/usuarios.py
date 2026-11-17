@@ -17,6 +17,7 @@ ROSTER_PILOTO = [
         "rol": "Administrador",
         "alias": ["Gianella Ponte", "Gianella Arcela Ponte Carrasco"],
         "telefono_whatsapp": "",
+        "activo": True,
     },
     {
         "id": "u-jchanta",
@@ -24,6 +25,28 @@ ROSTER_PILOTO = [
         "rol": "Inspector",
         "alias": [INSPECTOR_PILOTO, "Jose Manuel Chanta Torres"],
         "telefono_whatsapp": "",
+        "activo": True,
+    },
+    {
+        # Inspector histórico: 3 grafías = 1 usuario. El historial se liga aquí.
+        "id": "u-mguzman",
+        "nombre": "Miguel Guzmán Millones",
+        "rol": "Inspector",
+        "alias": [
+            "Miguel Guzmán",
+            "Miguel Guzmán Millones",
+            "Miguel Angel Guzman Millones",
+        ],
+        "telefono_whatsapp": "",
+        "activo": False,
+    },
+    {
+        "id": "u-yhuerto",
+        "nombre": "Yury Huerto",
+        "rol": "Administrador",
+        "alias": ["Yury Huerto", "Yury Clemente Huerto Santillan"],
+        "telefono_whatsapp": "",
+        "activo": False,
     },
 ]
 
@@ -35,6 +58,7 @@ def item_usuario(usuario: dict) -> dict:
         "nombre": usuario["nombre"],
         "rol": usuario["rol"],
         "alias": list(usuario["alias"]),
+        "activo": bool(usuario.get("activo", True)),
     }
     if usuario.get("telefono_whatsapp"):
         item["telefono_whatsapp"] = usuario["telefono_whatsapp"]
