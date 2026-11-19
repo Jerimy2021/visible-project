@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
-import { getCentro, getExtintor, getExtintores, subirCsv } from "./api";
+import {
+  getCentro, getExtintor, getExtintores, getNoCumplieron, getObservaciones, subirCsv,
+} from "./api";
 import { BarsH, Gauge, PuntoFalla, Tendencia } from "./charts";
-import type { Centro, ExtintorRow, Ficha } from "./types";
+import type { Centro, ExtintorRow, Ficha, NoCumple, Observacion } from "./types";
 
 const PERIODOS = ["2026-11", "2026-10", "2026-09", "2026-08", "2026-07", "2026-06"];
 const NAV = [
@@ -73,7 +75,9 @@ function CentroVista() {
       <div className="filtros">
         <div className="campo"><label>PLANTA</label>
           <select value={site} onChange={(e) => setSite(e.target.value)}>
-            <option value="HUA">HUA · CD Huachipa</option><option value="Todas">Todas</option>
+            <option value="Todas">Todas</option>
+            <option value="HUA">HUA · CD Huachipa</option>
+            <option value="FID">FID · Planta Fideería</option>
           </select></div>
         <div className="campo"><label>PERIODO</label>
           <select value={periodo} onChange={(e) => setPeriodo(e.target.value)}>
@@ -87,7 +91,7 @@ function CentroVista() {
           <Gauge pct={c.avance_pct} inspeccionados={c.inspeccionados} total={c.total} />
           <div className="row" style={{ gap: 8, marginTop: 6 }}>
             <span className="pill" style={{ background: "#fff3e0", color: "#8a4300" }}>{c.faltan} por inspeccionar</span>
-            <span className="pill" style={{ background: "#fdeaea", color: "#b3191d" }}>{c.p_abiertos} P abiertos</span>
+            <span className="pill" style={{ background: "#fdeaea", color: "#b3191d" }}>{c.p_abiertos} No cumple</span>
           </div>
         </div>
         <div className="grid g-kpis">
@@ -95,7 +99,7 @@ function CentroVista() {
           <Kpi l="INSPECCIONADOS" v={c.inspeccionados} s="en el periodo" c="#1f9d5c" />
           <Kpi l="FALTAN" v={c.faltan} s="del mes" c="#ffc20e" />
           <Kpi l="CONFORMES A LA 1ª" v={c.conformes_1a_pct == null ? "—" : `${c.conformes_1a_pct}%`} s="sin ningún P" c="#1f9d5c" />
-          <Kpi l="P ABIERTOS" v={c.p_abiertos} s="sin levantar" c="#e0282c" />
+          <Kpi l="NO CUMPLE" v={c.p_abiertos} s="sin levantar" c="#e0282c" />
           <Kpi l="TIEMPO LEVANTAM." v={c.tiempo_levantamiento_dias == null ? "—" : `${c.tiempo_levantamiento_dias} d`} s="promedio" c="#1f6fd1" />
           <Kpi l="INSPECTORES" v={c.inspectores_activos} s="activos" c="#14171c" />
           <Kpi l="APROBACIÓN" v={ap} s="del mes" c="#ff8a00" />
@@ -112,6 +116,13 @@ function CentroVista() {
       <div className="grid g-2">
         <div className="card"><h3>TENDENCIA · 6 MESES</h3><Tendencia serie={c.tendencia} /></div>
         <div className="card"><h3>PUNTO QUE MÁS FALLA</h3><PuntoFalla data={c.punto_que_mas_falla} /></div>
+      </div>
+
+      <div className="grid g-2">
+        <div className="card"><h3>NO CUMPLIERON POR MES</h3>
+          <NoCumpleMes site={site} serie={c.no_cumple_por_mes} /></div>
+        <div className="card"><h3>OBSERVACIONES</h3>
+          <Observaciones site={site} periodo={periodo} /></div>
       </div>
 
       <div className="card"><h3>TABLERO DE ALERTAS</h3>
@@ -225,5 +236,60 @@ function SubirVista({ aviso }: { aviso: (t: string) => void }) {
       </label>
       {estado && <div className="pill" style={{ background: "#eef1f4", color: "#14171c", alignSelf: "flex-start" }}>{estado}</div>}
     </div>
+  );
+}
+
+function NoCumpleMes({ site, serie }: { site: string; serie: { periodo: string; no_cumple: number }[] }) {
+  const [sel, setSel] = useState<string | null>(null);
+  const [filas, setFilas] = useState<NoCumple[]>([]);
+  const max = Math.max(1, ...serie.map((s) => s.no_cumple));
+  const abrir = (p: string) => { setSel(p); getNoCumplieron(site, p).then(setFilas); };
+  return (
+    <div className="stack" style={{ gap: 7 }}>
+      {serie.map((s) => (
+        <div key={s.periodo} className="row" style={{ cursor: "pointer" }} onClick={() => abrir(s.periodo)}>
+          <span style={{ width: 56, fontSize: 12, color: "#4a5462" }}>{s.periodo.slice(5)}/{s.periodo.slice(2, 4)}</span>
+          <div className="bar-track" style={{ height: 14 }}>
+            <div className="bar-fill" style={{ width: `${(100 * s.no_cumple) / max}%`, background: s.no_cumple ? "#e0282c" : "#9aa3ae" }} />
+          </div>
+          <b style={{ width: 24, textAlign: "right" }}>{s.no_cumple}</b>
+        </div>
+      ))}
+      <div style={{ fontSize: 11, color: "#4a5462" }}>Clic en un mes para ver la lista.</div>
+      {sel && (
+        <div className="modal" onClick={() => setSel(null)}>
+          <div className="box" onClick={(e) => e.stopPropagation()}>
+            <div className="row" style={{ justifyContent: "space-between" }}>
+              <h3 style={{ fontSize: 16 }}>No cumplieron · {site} · {sel}</h3>
+              <button className="btn gh" onClick={() => setSel(null)}>Cerrar</button>
+            </div>
+            {filas.length ? (
+              <table><thead><tr><th>Código</th><th>Qué</th><th>Levantado</th></tr></thead>
+                <tbody>{filas.map((f) => (
+                  <tr key={f.codigo}><td><b>{f.codigo}</b></td><td>{f.puntos.join(", ") || "—"}</td>
+                    <td>{f.levantado ? `✓ ${f.fecha_levantamiento}` : "—"}</td></tr>
+                ))}</tbody></table>
+            ) : <p className="muted">Todos cumplieron 🎉</p>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Observaciones({ site, periodo }: { site: string; periodo: string }) {
+  const [filas, setFilas] = useState<Observacion[]>([]);
+  useEffect(() => { getObservaciones(site, periodo).then(setFilas).catch(() => setFilas([])); }, [site, periodo]);
+  if (!filas.length) return <p className="muted">Sin observaciones en {site} ({periodo}).</p>;
+  return (
+    <table>
+      <thead><tr><th>Código</th><th>Inspector</th><th>Observación</th></tr></thead>
+      <tbody>
+        {filas.slice(0, 20).map((o) => (
+          <tr key={o.codigo}><td><b>{o.codigo}</b></td><td>{o.inspector}</td>
+            <td>{o.obs_general || o.adicionales || o.notas_puntos || o.observacion || "—"}</td></tr>
+        ))}
+      </tbody>
+    </table>
   );
 }

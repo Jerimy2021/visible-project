@@ -31,6 +31,32 @@ def _num(x) -> int:
         return 0
 
 
+def puntos_no_cumple(m: dict) -> list[str]:
+    return [et for col, et in PUNTOS if m.get(col) in ("NO_CUMPLE", "P")]
+
+
+def incumple_ahora(m: dict) -> bool:
+    """No cumple y aún no se levanta (pendiente abierto)."""
+    if m.get("fecha_levantamiento"):
+        return False
+    return (
+        _num(m.get("cantidad_p")) > 0
+        or m.get("resultado") == "Con pendientes"
+        or bool(puntos_no_cumple(m))
+    )
+
+
+def incumplio(m: dict) -> bool:
+    """Alguna vez no cumplió (incluye ya levantados). Usa el flag si viene del importador."""
+    if "incumplio" in m:
+        return bool(m["incumplio"])
+    return bool(
+        incumple_ahora(m)
+        or m.get("fecha_levantamiento")
+        or m.get("resultado") in ("Con pendientes", "Conforme (levantado)")
+    )
+
+
 def _dias(desde: str, hasta: str) -> int:
     return (date.fromisoformat(hasta) - date.fromisoformat(desde)).days
 
@@ -69,9 +95,7 @@ def centro(site: str, periodo: str, datos: dict, hoy: date | None = None) -> dic
     inspeccionados = len({m["codigo"] for m in mant_per})
     nm = len(mant_per)
     conformes = len([m for m in mant_per if m.get("resultado") == "Conforme"])
-    abiertos = [
-        m for m in mants if _num(m.get("cantidad_p")) > 0 and not m.get("fecha_levantamiento")
-    ]
+    abiertos = [m for m in mants if incumple_ahora(m)]
     levantados = [m for m in mants if m.get("fecha_levantamiento") and m.get("fecha_inspeccion")]
 
     return {
@@ -96,12 +120,66 @@ def centro(site: str, periodo: str, datos: dict, hoy: date | None = None) -> dic
         "por_inspector": _por_inspector(exts, mant_per, usuarios),
         "punto_que_mas_falla": _punto_que_mas_falla(mant_per),
         "tendencia": _tendencia(periodo, mants, total),
+        "no_cumple_por_mes": _no_cumple_por_mes(periodo, mants),
         "reincidentes": _reincidentes(periodo, mants),
         "alertas": {
             "pendientes": _pendientes(abiertos, hoy),
             "reincidentes": _reincidentes(periodo, mants)[:5],
         },
     }
+
+
+def _del_site_periodo(site: str, periodo: str, mants: list[dict]) -> list[dict]:
+    return [
+        m
+        for m in mants
+        if m.get("periodo") == periodo and (site == "Todas" or m.get("site") == site)
+    ]
+
+
+def observaciones(site: str, periodo: str, datos: dict) -> list[dict]:
+    """Movimientos del periodo con alguna observación (notas, adicionales o general)."""
+    filas = []
+    for m in _del_site_periodo(site, periodo, datos["mantenimientos"]):
+        if (
+            m.get("notas_puntos")
+            or m.get("adicionales")
+            or m.get("obs_general")
+            or m.get("observacion")
+        ):
+            filas.append(
+                {
+                    "codigo": m["codigo"],
+                    "site": m.get("site"),
+                    "inspector": m.get("inspector"),
+                    "notas_puntos": m.get("notas_puntos", ""),
+                    "adicionales": m.get("adicionales", ""),
+                    "obs_general": m.get("obs_general", ""),
+                    "observacion": m.get("observacion", ""),
+                }
+            )
+    return sorted(filas, key=lambda x: x["codigo"])
+
+
+def no_cumplieron(site: str, periodo: str, datos: dict) -> list[dict]:
+    """Extintores que no cumplieron ese mes, con qué y si ya se levantó."""
+    filas = []
+    for m in _del_site_periodo(site, periodo, datos["mantenimientos"]):
+        if not incumplio(m):
+            continue
+        filas.append(
+            {
+                "codigo": m["codigo"],
+                "site": m.get("site"),
+                "inspector": m.get("inspector"),
+                "puntos": puntos_no_cumple(m)
+                or (["(detalle en obs)"] if m.get("observacion") else []),
+                "resultado": m.get("resultado"),
+                "levantado": bool(m.get("fecha_levantamiento")),
+                "fecha_levantamiento": m.get("fecha_levantamiento", ""),
+            }
+        )
+    return sorted(filas, key=lambda x: x["codigo"])
 
 
 def _aprobacion(site: str, periodo: str, aprob: list[dict], sites: list[dict]) -> dict:
@@ -122,7 +200,7 @@ def _por_planta(periodo, exts, mant_per, aprob, sites) -> list[dict]:
         m_site = [m for m in mant_per if m.get("site") == cod]
         tot = len(e_site)
         ins = len({m["codigo"] for m in m_site})
-        con_p = len({m["codigo"] for m in m_site if m.get("resultado") != "Conforme"})
+        con_p = len({m["codigo"] for m in m_site if incumplio(m)})
         a = next((x for x in aprob if x.get("periodo") == periodo and x.get("site") == cod), None)
         filas.append(
             {
@@ -164,7 +242,7 @@ def _por_inspector(exts, mant_per, usuarios) -> list[dict]:
 
 def _punto_que_mas_falla(mant_per) -> list[dict]:
     filas = [
-        {"punto": etiqueta, "p": len([m for m in mant_per if m.get(col) == "P"])}
+        {"punto": etiqueta, "p": len([m for m in mant_per if m.get(col) in ("NO_CUMPLE", "P")])}
         for col, etiqueta in PUNTOS
     ]
     return sorted(filas, key=lambda x: x["p"], reverse=True)
@@ -180,12 +258,20 @@ def _tendencia(periodo, mants, total) -> list[dict]:
 
 def _reincidentes(periodo, mants) -> list[dict]:
     recientes = set(periodos_recientes(periodo, 6))
-    con_p = [m for m in mants if m.get("periodo") in recientes and m.get("resultado") != "Conforme"]
+    fallidos = [m for m in mants if m.get("periodo") in recientes and incumplio(m)]
     por_cod: dict[str, set] = {}
-    for m in con_p:
+    for m in fallidos:
         por_cod.setdefault(m["codigo"], set()).add(m["periodo"])
     filas = [{"codigo": c, "meses": len(p)} for c, p in por_cod.items() if len(p) >= 2]
     return sorted(filas, key=lambda x: x["meses"], reverse=True)
+
+
+def _no_cumple_por_mes(periodo, mants) -> list[dict]:
+    series = []
+    for per in periodos_recientes(periodo, 6):
+        codigos = {m["codigo"] for m in mants if m.get("periodo") == per and incumplio(m)}
+        series.append({"periodo": per, "no_cumple": len(codigos)})
+    return series
 
 
 def _pendientes(abiertos, hoy) -> list[dict]:
@@ -193,7 +279,7 @@ def _pendientes(abiertos, hoy) -> list[dict]:
     filas = []
     for m in ordenados[:5]:
         fi = m.get("fecha_inspeccion") or ""
-        puntos = [et for col, et in PUNTOS if m.get(col) == "P"]
+        puntos = puntos_no_cumple(m)
         filas.append(
             {
                 "codigo": m["codigo"],

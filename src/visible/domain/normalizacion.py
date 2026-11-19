@@ -34,6 +34,23 @@ def numero(valor: str | None) -> Decimal | None:
         return None
 
 
+_PUNTO = {
+    "ok": "CUMPLE",
+    "cumple": "CUMPLE",
+    "p": "NO_CUMPLE",
+    "no cumple": "NO_CUMPLE",
+    "no_cumple": "NO_CUMPLE",
+    "na": "NA",
+    "n/a": "NA",
+    "": "NA",
+}
+
+
+def punto(valor: str | None) -> str:
+    """OK/Cumple -> CUMPLE; P/No cumple -> NO_CUMPLE; NA/N/A/vacío -> NA."""
+    return _PUNTO.get((valor or "").strip().lower(), "NA")
+
+
 def nombre_canonico(valor: str | None) -> str:
     """Minúsculas, sin tildes, espacios colapsados — para unificar alias de personas."""
     v = unicodedata.normalize("NFKD", (valor or "").strip().lower())

@@ -23,7 +23,9 @@ def test_unifica_alias_miguel():
 
 def test_roster_piloto():
     ids = {u["id"] for u in ROSTER_PILOTO}
-    assert ids == {"u-gponte", "u-jchanta", "u-mguzman", "u-yhuerto", "u-jsandoval"}
+    assert ids == {"u-gponte", "u-jchanta", "u-mguzman", "u-yhuerto", "u-jsandoval", "u-jromero"}
+    assert resolver_id("Jose Chanta", ROSTER_PILOTO) == "u-jchanta"
+    assert resolver_id("Jerson David Romero Samaniego", ROSTER_PILOTO) == "u-jromero"
     # Gianella aparece con otra grafía en AprobacionesMes -> debe resolver igual.
     assert resolver_id("Gianella Arcela Ponte Carrasco", ROSTER_PILOTO) == "u-gponte"
     assert resolver_id("Jose Manuel Chanta Torres", ROSTER_PILOTO) == "u-jchanta"

@@ -1,4 +1,4 @@
-import type { Centro, ExtintorRow, Ficha } from "./types";
+import type { Centro, ExtintorRow, Ficha, NoCumple, Observacion } from "./types";
 
 const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? "";
 const KEY = (import.meta.env.VITE_API_KEY as string | undefined) ?? "";
@@ -18,6 +18,16 @@ export const getExtintores = (site: string, estado: string) =>
   ).then((d) => d.extintores);
 
 export const getExtintor = (codigo: string) => get<Ficha>(`/extintor/${encodeURIComponent(codigo)}`);
+
+export const getObservaciones = (site: string, periodo: string) =>
+  get<{ observaciones: Observacion[] }>(
+    `/observaciones?site=${encodeURIComponent(site)}&periodo=${periodo}`,
+  ).then((d) => d.observaciones);
+
+export const getNoCumplieron = (site: string, periodo: string) =>
+  get<{ no_cumplieron: NoCumple[] }>(
+    `/no-cumplieron?site=${encodeURIComponent(site)}&periodo=${periodo}`,
+  ).then((d) => d.no_cumplieron);
 
 /** Pide URL prefirmada, sube el CSV a S3 y devuelve la key (la Lambda procesa al subir). */
 export async function subirCsv(archivo: string, contenido: Blob): Promise<string> {

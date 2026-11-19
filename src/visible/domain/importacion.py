@@ -5,10 +5,31 @@ Puro y testeable con los CSV reales. `Codigo` -> `codigo` (Title de SharePoint).
 
 import csv
 import io
+import re
 
 from visible.domain.fechas import normalizar_fecha
-from visible.domain.normalizacion import booleano, numero, texto
-from visible.domain.usuarios import INSPECTOR_PILOTO
+from visible.domain.normalizacion import booleano, numero, punto, texto
+
+RESULTADOS_INCUMPLE = {"Con pendientes", "Conforme (levantado)"}
+
+
+def separar_observacion(obs: str) -> tuple[str, str, str]:
+    """Divide la observación concatenada con ' · ' en (notas_puntos, adicionales, general).
+
+    notas_puntos = segmentos tipo '9.xxx'; adicionales = 'Adicionales: ...'; resto = general.
+    """
+    notas, adic, general = [], [], []
+    for seg in (s.strip() for s in (obs or "").split(" · ")):
+        if not seg:
+            continue
+        if re.match(r"^\d+\.", seg):
+            notas.append(seg)
+        elif seg.lower().startswith("adicionales"):
+            adic.append(seg)
+        else:
+            general.append(seg)
+    return " · ".join(notas), " · ".join(adic), " · ".join(general)
+
 
 PUNTOS = [
     ("precinto", "Precinto"),
@@ -87,8 +108,7 @@ def _extintores(f: dict) -> dict | None:
         "fecha_ult_mant_mensual": normalizar_fecha(f.get("FechaUltMantMensual", "")),
         "fecha_prox_mant_mensual": normalizar_fecha(f.get("FechaProxMantMensual", "")),
         "estado": texto(f.get("Estado")),
-        # Piloto: todos los extintores se asignan al inspector del piloto.
-        "inspector_asignado": INSPECTOR_PILOTO,
+        "inspector_asignado": texto(f.get("InspectorAsignado")),
         "activo": bool(booleano(f.get("Activo"))),
     }
     for dynamo_col, csv_col in (("numero_original", "NumeroOriginal"), ("capacidad", "Capacidad")):
@@ -103,6 +123,11 @@ def _mantenimientos(f: dict) -> dict | None:
     periodo = texto(f.get("Periodo"))
     if not codigo or not periodo:
         return None
+    cantidad_p = int(numero(f.get("CantidadP")) or 0)
+    resultado = texto(f.get("Resultado"))
+    fecha_levant = normalizar_fecha(f.get("FechaLevantamiento", ""))
+    observacion = texto(f.get("Observacion"))
+    notas, adicionales, general = separar_observacion(observacion)
     item = {
         "codigo": codigo,
         "periodo": periodo,
@@ -110,14 +135,26 @@ def _mantenimientos(f: dict) -> dict | None:
         "fecha_inspeccion": normalizar_fecha(f.get("FechaInspeccion", "")),
         "tipo_ejecutor": texto(f.get("TipoEjecutor")),
         "inspector": texto(f.get("Inspector")),
-        "cantidad_p": int(numero(f.get("CantidadP")) or 0),
-        "resultado": texto(f.get("Resultado")),
-        "observacion": texto(f.get("Observacion")),
-        "fecha_levantamiento": normalizar_fecha(f.get("FechaLevantamiento", "")),
+        "cantidad_p": cantidad_p,
+        "resultado": resultado,
+        "observacion": observacion,
+        "notas_puntos": notas,
+        "adicionales": adicionales,
+        "obs_general": general,
+        "fecha_levantamiento": fecha_levant,
         "hoja_origen": texto(f.get("HojaOrigen")),
     }
-    for dynamo_col, csv_col in PUNTOS:
-        item[dynamo_col] = texto(f.get(csv_col))  # "OK" / "P" / "NA"
+    puntos = {
+        dynamo_col: punto(f.get(csv_col)) for dynamo_col, csv_col in PUNTOS
+    }  # CUMPLE/NO_CUMPLE/NA
+    item.update(puntos)
+    # Nunca se pierde el historial: se incumplió si alguna vez vimos "No cumple".
+    item["incumplio"] = bool(
+        cantidad_p > 0
+        or fecha_levant
+        or resultado in RESULTADOS_INCUMPLE
+        or any(v == "NO_CUMPLE" for v in puntos.values())
+    )
     return item
 
 

@@ -1,7 +1,16 @@
 from decimal import Decimal
 
 from visible.domain.fechas import normalizar_fecha
-from visible.domain.normalizacion import booleano, nombre_canonico, numero, texto
+from visible.domain.normalizacion import booleano, nombre_canonico, numero, punto, texto
+
+
+def test_punto():
+    assert punto("OK") == "CUMPLE"
+    assert punto("Cumple") == "CUMPLE"
+    assert punto("P") == "NO_CUMPLE"
+    assert punto("No cumple") == "NO_CUMPLE"
+    assert punto("N/A") == "NA"
+    assert punto("") == "NA"
 
 
 def test_fecha():

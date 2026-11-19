@@ -17,6 +17,10 @@ INTENCIONES = [
     "ya_termine",
     "equipo",
     "alertas",
+    "observaciones",
+    "no_cumplieron",
+    "no_cumplieron_meses",
+    "saludo",
     "otro",
 ]
 
@@ -28,17 +32,21 @@ TOOL_SCHEMA = {
             "type": "string",
             "description": "código de extintor si menciona uno, ej HUA-00012",
         },
+        "site": {"type": "string", "description": "planta si menciona una: HUA o FID"},
+        "mes": {"type": "string", "description": "mes si menciona uno: nombre (octubre) o yyyy-mm"},
     },
     "required": ["intencion"],
 }
 
 SYSTEM = (
     "Clasificas el mensaje de un usuario (inspector o administrador) de inspección de "
-    "extintores en una intención. faltan = cuántos le faltan por inspeccionar. donde = "
-    "dónde está un extintor (extrae su código). p_abiertos = sus observaciones/P pendientes. "
-    "resumen = avance del mes / KPIs. ya_termine = dice que ya terminó o ya lo hizo. "
-    "equipo = avance por inspector (admin). alertas = P abiertos y atrasados de la planta "
-    "(admin). otro = cualquier otra cosa. Responde solo con la herramienta."
+    "extintores. faltan = cuántos le faltan por inspeccionar. donde = dónde está un extintor "
+    "(extrae su código). p_abiertos = sus «No cumple» pendientes. resumen = avance del mes / "
+    "KPIs. ya_termine = ya terminó o ya lo hizo. equipo = avance por inspector (admin). "
+    "alertas = No cumple abiertos y atrasados (admin). observaciones = observaciones de una "
+    "planta. no_cumplieron = extintores que no cumplieron un mes. no_cumplieron_meses = resumen "
+    "por mes. saludo = hola/buenas/gracias/primera vez. otro = otra cosa. Extrae también la "
+    "planta (HUA/FID) y el mes si los menciona. Responde solo con la herramienta."
 )
 
 
@@ -50,8 +58,13 @@ def parsear_intencion(respuesta: dict) -> dict:
             intencion = inp.get("intencion", "otro")
             if intencion not in INTENCIONES:
                 intencion = "otro"
-            return {"intencion": intencion, "codigo": (inp.get("codigo") or "").upper().strip()}
-    return {"intencion": "otro", "codigo": ""}
+            return {
+                "intencion": intencion,
+                "codigo": (inp.get("codigo") or "").upper().strip(),
+                "site": (inp.get("site") or "").upper().strip(),
+                "mes": (inp.get("mes") or "").strip().lower(),
+            }
+    return {"intencion": "otro", "codigo": "", "site": "", "mes": ""}
 
 
 def _converse(cliente, modelo: str, texto: str) -> dict:

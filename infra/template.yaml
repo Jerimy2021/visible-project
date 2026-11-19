@@ -250,6 +250,26 @@ Resources:
           Properties:
             Path: /centro
             Method: GET
+        Observaciones:
+          Type: HttpApi
+          Properties:
+            Path: /observaciones
+            Method: GET
+        NoCumplieron:
+          Type: HttpApi
+          Properties:
+            Path: /no-cumplieron
+            Method: GET
+        ObservacionesOpt:
+          Type: HttpApi
+          Properties:
+            Path: /observaciones
+            Method: OPTIONS
+        NoCumplieronOpt:
+          Type: HttpApi
+          Properties:
+            Path: /no-cumplieron
+            Method: OPTIONS
         Extintores:
           Type: HttpApi
           Properties:

@@ -13,7 +13,7 @@ from decimal import Decimal
 
 from visible.adapters.outbound import repositorio_lectura as repo
 from visible.adapters.outbound import secrets
-from visible.domain.centro import centro
+from visible.domain.centro import centro, no_cumplieron, observaciones
 from visible.domain.extintores import en_alcance, estado_inspeccion
 from visible.domain.fechas import hoy_lima
 from visible.domain.usuarios import resolver_id
@@ -65,6 +65,16 @@ def handler(event: dict, context: object) -> dict:
         site = qs.get("site", "Todas")
         periodo = qs.get("periodo") or _periodo_actual()
         return _json(200, centro(site, periodo, repo.cargar_datos()))
+
+    if ruta == "/observaciones":
+        site = qs.get("site", "Todas")
+        periodo = qs.get("periodo") or _periodo_actual()
+        return _json(200, {"observaciones": observaciones(site, periodo, repo.cargar_datos())})
+
+    if ruta == "/no-cumplieron":
+        site = qs.get("site", "Todas")
+        periodo = qs.get("periodo") or _periodo_actual()
+        return _json(200, {"no_cumplieron": no_cumplieron(site, periodo, repo.cargar_datos())})
 
     if ruta == "/extintores":
         return _json(200, {"extintores": _listar_extintores(qs)})

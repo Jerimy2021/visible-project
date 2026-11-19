@@ -52,8 +52,28 @@ export interface Centro {
   por_inspector: Inspector[];
   punto_que_mas_falla: Punto[];
   tendencia: TendenciaItem[];
+  no_cumple_por_mes: { periodo: string; no_cumple: number }[];
   reincidentes: Reincidente[];
   alertas: { pendientes: Pendiente[]; reincidentes: Reincidente[] };
+}
+
+export interface Observacion {
+  codigo: string;
+  site: string;
+  inspector: string;
+  notas_puntos: string;
+  adicionales: string;
+  obs_general: string;
+  observacion: string;
+}
+export interface NoCumple {
+  codigo: string;
+  site: string;
+  inspector: string;
+  puntos: string[];
+  resultado: string;
+  levantado: boolean;
+  fecha_levantamiento: string;
 }
 
 export interface ExtintorRow {

@@ -25,7 +25,8 @@ def main() -> None:
     for logico in LOGICOS:
         archivo = RAW / TABLAS[logico][0]
         items, errores = parsear(logico, archivo.read_bytes())
-        rep = upsert(f"{PREFIJO}{logico}", items)
+        preservar = ["incumplio"] if logico == "mantenimientos" else None
+        rep = upsert(f"{PREFIJO}{logico}", items, TABLAS[logico][2], preservar)
         print(
             f"  {logico:<16} filas={len(items):>4}  nuevas={rep['nuevas']:>4}  "
             f"actualizadas={rep['actualizadas']:>4}  errores={len(errores) + len(rep['errores'])}"

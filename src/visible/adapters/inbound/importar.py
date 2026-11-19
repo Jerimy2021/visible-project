@@ -55,9 +55,10 @@ def solicitar_url(event: dict, context: object) -> dict:
 def importar_contenido(logico: str, contenido: bytes) -> dict:
     """Parsea y hace upsert de un CSV ya leído. Devuelve el reporte."""
     items, errores = parsear(logico, contenido)
-    tabla_env = TABLAS[logico][1]
+    _, tabla_env, claves = TABLAS[logico]
+    preservar = ["incumplio"] if logico == "mantenimientos" else None
     resultado = (
-        upsert(os.environ[tabla_env], items)
+        upsert(os.environ[tabla_env], items, claves, preservar)
         if items
         else {"nuevas": 0, "actualizadas": 0, "errores": []}
     )

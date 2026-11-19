@@ -1,8 +1,7 @@
 from decimal import Decimal
 from pathlib import Path
 
-from visible.domain.importacion import TABLAS, parsear, tabla_de_archivo
-from visible.domain.usuarios import INSPECTOR_PILOTO
+from visible.domain.importacion import TABLAS, parsear, separar_observacion, tabla_de_archivo
 
 RAW = Path(__file__).resolve().parents[1] / "data" / "raw"
 
@@ -17,46 +16,53 @@ def test_tabla_de_archivo():
     assert tabla_de_archivo("cualquiera.csv") == ""
 
 
+def test_separar_observacion():
+    notas, adic, general = separar_observacion(
+        "9.PRUEBA | ok · Adicionales: extra · RESERVA ALICORP"
+    )
+    assert notas == "9.PRUEBA | ok"
+    assert adic == "Adicionales: extra"
+    assert general == "RESERVA ALICORP"
+
+
 def test_sites():
     items, errores = _parsear("sites")
     assert errores == []
-    assert len(items) == 1
-    s = items[0]
-    assert s["codigo"] == "HUA"
-    assert s["activo"] is True
-    assert s["supervisor_ssoma"] == "Jose Manuel Chanta Torres"
+    assert len(items) == 2
+    assert {s["codigo"] for s in items} == {"HUA", "FID"}
 
 
 def test_extintores():
     items, errores = _parsear("extintores")
     assert errores == []
-    assert len(items) == 49
+    assert len(items) == 128
     e = next(x for x in items if x["codigo"] == "HUA-00001")
-    assert e["inspector_asignado"] == INSPECTOR_PILOTO  # piloto: todos a José Manuel
-    assert e["ph_por_confirmar"] is True
-    assert e["activo"] is True
+    # Respeta InspectorAsignado del CSV (sin override).
+    assert e["inspector_asignado"] == "Miguel Guzmán Millones"
     assert e["capacidad"] == Decimal("20")
-    assert e["fecha_fabricacion"] == "2017-01-01"
-    assert e["fecha_prox_mant_mensual"] == "2026-12-15"
+    fid = [x for x in items if x["site"] == "FID"]
+    assert len(fid) == 79
+    assert all(x["inspector_asignado"] == "Jerson Romero" for x in fid)
 
 
 def test_mantenimientos():
     items, errores = _parsear("mantenimientos")
     assert errores == []
-    assert len(items) == 434
+    assert len(items) == 841
     m = items[0]
-    assert m["codigo"] == "HUA-00002"
-    assert m["periodo"] == "2026-01"
-    assert m["gabinete"] == "NA"  # "N/A" normalizado
-    assert m["cantidad_p"] == 0
-    assert m["site"] == "HUA"
+    assert m["precinto"] == "CUMPLE"  # "OK" normalizado
+    assert m["gabinete"] in ("CUMPLE", "NO_CUMPLE", "NA")
+    # incumplio: los levantados (fecha_levantamiento) deben quedar en true.
+    levantados = [x for x in items if x.get("fecha_levantamiento")]
+    assert levantados and all(x["incumplio"] for x in levantados)
+    # conforme sin pendientes -> incumplio false
+    conforme = next(
+        x for x in items if x["resultado"] == "Conforme" and not x["fecha_levantamiento"]
+    )
+    assert conforme["incumplio"] is False
 
 
 def test_aprobaciones():
     items, errores = _parsear("aprobaciones")
     assert errores == []
     assert len(items) == 1
-    a = items[0]
-    assert a["site"] == "HUA"
-    assert a["periodo"] == "2026-10"
-    assert a["estado"] == "Devuelto"

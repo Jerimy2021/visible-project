@@ -53,6 +53,7 @@ body {
 select, input { border: 1px solid var(--borde); border-radius: 9px; padding: 8px 11px; font: inherit; background: #fff; }
 
 .card { background: #fff; border: 1px solid var(--borde); border-radius: 14px; padding: 16px; }
+.muted { color: var(--muted); }
 .grid { display: grid; gap: 14px; }
 .g-top { grid-template-columns: 320px 1fr; align-items: stretch; }
 .g-kpis { grid-template-columns: repeat(4, 1fr); }
