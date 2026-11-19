@@ -162,10 +162,10 @@ def observaciones(site: str, periodo: str, datos: dict) -> list[dict]:
 
 
 def no_cumplieron(site: str, periodo: str, datos: dict) -> list[dict]:
-    """Extintores que no cumplieron ese mes, con qué y si ya se levantó."""
+    """Extintores que NO cumplen (observación abierta). Los levantados ya cumplen."""
     filas = []
     for m in _del_site_periodo(site, periodo, datos["mantenimientos"]):
-        if not incumplio(m):
+        if not incumple_ahora(m):
             continue
         filas.append(
             {
@@ -269,7 +269,8 @@ def _reincidentes(periodo, mants) -> list[dict]:
 def _no_cumple_por_mes(periodo, mants) -> list[dict]:
     series = []
     for per in periodos_recientes(periodo, 6):
-        codigos = {m["codigo"] for m in mants if m.get("periodo") == per and incumplio(m)}
+        # Solo los que siguen abiertos; los levantados ya cumplen.
+        codigos = {m["codigo"] for m in mants if m.get("periodo") == per and incumple_ahora(m)}
         series.append({"periodo": per, "no_cumple": len(codigos)})
     return series
 
